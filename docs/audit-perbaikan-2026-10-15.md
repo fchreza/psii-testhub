@@ -51,3 +51,8 @@ Akses ke project Vercel `psii-testhub` telah pulih. Project memiliki deployment 
 `RESEND_API_KEY` dan `RESEND_FROM` belum ada pada project Vercel. Akun Resend memiliki domain pengirim terverifikasi `harikita.biz.id`, tetapi alamat pengirim belum dipilih untuk PSII TestHub. Pemulihan sandi akan tetap tidak berfungsi di production sampai tersedia API key khusus send-only dan alamat pengirim yang disetujui.
 
 Commit lokal `5b18733` berisi seluruh perbaikan dan lulus `npm run typecheck`, build Next.js production, serta `git diff --check`. Push ke `main` ditahan sampai pemilik mengonfirmasi `DATABASE_URL` production memang menunjuk `psii_testhub` dan memberikan konfigurasi email yang disetujui (API key sebagai secret, alamat pengirim biasa).
+
+
+### Pembaruan keputusan rilis — 15 Oktober 2026, 14:32 WIB
+
+Catatan status sebelumnya yang menahan push karena konfirmasi database kini superseded: pemilik mengonfirmasi `DATABASE_URL` production menunjuk ke `psii_testhub` dan meminta rilis inti sekarang. Nilai secret tetap tidak dibaca atau ditampilkan. Pemilik menunda konfigurasi email reset; `RESEND_API_KEY` dan `RESEND_FROM` akan ditambahkan pada tahap berikutnya, sehingga alur permintaan reset belum dapat mengirim email sampai konfigurasi tersebut tersedia. `APP_URL` production telah dikonfigurasi. Pertahankan commit aplikasi `5b18733` dan dokumentasi `641a26e`, lalu push dan verifikasi deployment production.
