@@ -40,10 +40,14 @@ Prioritas berikutnya bukan kontrol akses dasar, melainkan kelengkapan operasiona
 2. Berita Acara SIT/UAT, pengesahan/tanda tangan digital, dan ekspor dokumen — **ditunda sesuai permintaan pemilik produk**.
 3. Pencarian/filter/dashboard tambahan serta notifikasi tugas dan perubahan.
 4. Uji integrasi permission terhadap database nyata untuk semua kombinasi role, termasuk percobaan akses lintas proyek dan pengujian upload storage.
-5. Konfigurasi sender email dan environment deployment untuk mengaktifkan pemulihan sandi di production.
+5. Mengaktifkan sender email pemulihan sandi dan memverifikasi koneksi database runtime sebelum deployment.
 
-## Catatan deployment
+## Catatan deployment — status 15 Oktober 2026
 
-Migrasi role `002` dan pemulihan sandi `003` telah diuji di branch sementara lalu diterapkan setelah persetujuan pemilik produk pada 15 Oktober 2026, hanya ke Neon project Angkutin / branch `production` / database `psii_testhub`. Verifikasi production menemukan satu akun `ADMIN`, default role `INTERNAL_PSII`, kolom `sesi_versi`, tabel `th_password_resets`, serta indeks email/IP/user; database `neondb` tidak disentuh.
+Migrasi role `002` dan pemulihan sandi `003` telah diuji di branch sementara lalu diterapkan setelah persetujuan pemilik produk, hanya ke Neon project Angkutin / branch `production` / database `psii_testhub`. Verifikasi production menemukan satu akun `ADMIN`, default role `INTERNAL_PSII`, kolom `sesi_versi`, tabel `th_password_resets`, serta indeks email/IP/user; database `neondb` tidak disentuh.
 
-Push/deploy kode masih ditahan: akses Vercel mengembalikan 403, termasuk saat memakai project ID dan team ID yang tercatat, dan CLI `vercel` tidak terpasang. Akibatnya `DATABASE_URL` runtime belum dapat diverifikasi menunjuk `psii_testhub` (bukan `neondb`), domain production belum dapat dikonfirmasi, dan keberadaan `APP_URL`, `RESEND_API_KEY`, serta `RESEND_FROM` belum diketahui. Minta pemilik memulihkan otorisasi Vercel untuk project TestHub sebelum push ke `main` agar deployment tidak memakai database yang salah; jangan menyatakan deploy berhasil sebelum status production diperiksa.
+Akses ke project Vercel `psii-testhub` telah pulih. Project memiliki deployment production berstatus `READY` pada commit lama `c68ce00`; perubahan lokal belum dipush. Environment production memiliki `DATABASE_URL` dan `SESI_SECRET`, tetapi Vercel menandai `DATABASE_URL` sebagai sensitive dan tidak mengembalikan nilainya, sehingga target database belum dapat diverifikasi secara independen tanpa konfirmasi pemilik. `APP_URL` production sudah ditambahkan dengan nilai `https://psii-testhub.vercel.app`.
+
+`RESEND_API_KEY` dan `RESEND_FROM` belum ada pada project Vercel. Akun Resend memiliki domain pengirim terverifikasi `harikita.biz.id`, tetapi alamat pengirim belum dipilih untuk PSII TestHub. Pemulihan sandi akan tetap tidak berfungsi di production sampai tersedia API key khusus send-only dan alamat pengirim yang disetujui.
+
+Commit lokal `5b18733` berisi seluruh perbaikan dan lulus `npm run typecheck`, build Next.js production, serta `git diff --check`. Push ke `main` ditahan sampai pemilik mengonfirmasi `DATABASE_URL` production memang menunjuk `psii_testhub` dan memberikan konfigurasi email yang disetujui (API key sebagai secret, alamat pengirim biasa).
