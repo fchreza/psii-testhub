@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Spinner } from "@/components/indikator-proses";
+import { useFocusTrap } from "@/components/use-focus-trap";
 
 type MetadataProyek = {
   nama: string;
@@ -59,6 +61,7 @@ export function EditorMetadataProyek({ projectId, nilai }: { projectId: string; 
   const [draft, setDraft] = useState<Draft>(() => buatDraft(nilai));
   const [sibuk, setSibuk] = useState(false);
   const [galat, setGalat] = useState<string | null>(null);
+  const [berhasil, setBerhasil] = useState<string | null>(null);
   const router = useRouter();
 
   const set = (k: keyof Draft, v: string) => setDraft((x) => ({ ...x, [k]: v }));
@@ -66,6 +69,7 @@ export function EditorMetadataProyek({ projectId, nilai }: { projectId: string; 
     if (sibuk) return;
     setDraft(buatDraft(nilai)); setGalat(null); setBuka(false);
   };
+  const dialogRef = useFocusTrap<HTMLElement>(buka, tutup);
 
   async function simpan(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault(); setSibuk(true); setGalat(null);
@@ -82,7 +86,7 @@ export function EditorMetadataProyek({ projectId, nilai }: { projectId: string; 
       });
       const hasil = await r.json().catch(() => ({}));
       if (!r.ok) { setGalat(hasil.pesan ?? "Gagal menyimpan metadata proyek."); return; }
-      setBuka(false); router.refresh();
+      setBuka(false); setBerhasil("Metadata proyek berhasil disimpan."); router.refresh();
     } catch {
       setGalat("Tidak dapat terhubung. Periksa koneksi lalu coba lagi.");
     } finally { setSibuk(false); }
@@ -90,14 +94,15 @@ export function EditorMetadataProyek({ projectId, nilai }: { projectId: string; 
 
   return (
     <>
-      <button type="button" onClick={() => { setDraft(buatDraft(nilai)); setGalat(null); setBuka(true); }}
+      <button type="button" onClick={() => { setDraft(buatDraft(nilai)); setGalat(null); setBerhasil(null); setBuka(true); }}
         className="rounded-lg border border-garis-kuat bg-kartu px-3 py-2 text-[13px] font-semibold text-tinta-2 hover:border-aksi hover:text-aksi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aksi">
         Ubah metadata
       </button>
+      {berhasil && <p role="status" aria-live="polite" className="mt-2 rounded-md border border-lulus/30 bg-lulus-lembut px-3 py-2 text-[12.5px] text-lulus">{berhasil}</p>}
       {buka && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <button type="button" aria-label="Tutup editor metadata" onClick={tutup} className="absolute inset-0 bg-tinta/35" />
-          <aside role="dialog" aria-modal="true" aria-labelledby="judul-editor-metadata"
+          <aside ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="judul-editor-metadata"
             className="relative z-10 h-full w-full max-w-[720px] overflow-y-auto border-l border-garis bg-kartu shadow-xl">
             <form onSubmit={simpan} className="flex min-h-full flex-col">
               <header className="sticky top-0 z-10 border-b border-garis bg-kartu px-6 py-5 sm:px-8">
@@ -111,7 +116,7 @@ export function EditorMetadataProyek({ projectId, nilai }: { projectId: string; 
                 </div>
               </header>
               <div className="flex-1 space-y-4 px-6 py-5 sm:px-8">
-                <Isian label="Nama proyek" nilai={draft.nama} ubah={(v) => set("nama", v)} wajib />
+                <Isian label="Nama proyek" nilai={draft.nama} ubah={(v) => set("nama", v)} wajib autoFocus />
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Isian label="Aplikasi" nilai={draft.aplikasi} ubah={(v) => set("aplikasi", v)} />
                   <Isian label="Modul" nilai={draft.modul} ubah={(v) => set("modul", v)} />
@@ -149,9 +154,9 @@ export function EditorMetadataProyek({ projectId, nilai }: { projectId: string; 
               <footer className="sticky bottom-0 flex justify-end gap-3 border-t border-garis bg-kartu px-6 py-4 sm:px-8">
                 <button type="button" disabled={sibuk} onClick={tutup}
                   className="rounded-md border border-garis-kuat px-4 py-2.5 text-[13.5px] font-medium text-tinta-2 hover:bg-kanvas disabled:opacity-50">Batal</button>
-                <button type="submit" disabled={sibuk}
-                  className="rounded-md bg-aksi px-5 py-2.5 text-[13.5px] font-semibold text-white hover:bg-aksi/90 disabled:opacity-60">
-                  {sibuk ? "Menyimpan…" : "Simpan perubahan"}
+                <button type="submit" disabled={sibuk} aria-busy={sibuk}
+                  className="inline-flex items-center gap-2 rounded-md bg-aksi px-5 py-2.5 text-[13.5px] font-semibold text-white hover:bg-aksi/90 disabled:cursor-wait disabled:opacity-60">
+                  {sibuk && <Spinner className="h-4 w-4" />}{sibuk ? "Menyimpan…" : "Simpan perubahan"}
                 </button>
               </footer>
             </form>
@@ -162,8 +167,8 @@ export function EditorMetadataProyek({ projectId, nilai }: { projectId: string; 
   );
 }
 
-function Isian({ label, nilai, ubah, tipe = "text", wajib = false, banyak = false }: {
-  label: string; nilai: string; ubah: (v: string) => void; tipe?: string; wajib?: boolean; banyak?: boolean;
+function Isian({ label, nilai, ubah, tipe = "text", wajib = false, banyak = false, autoFocus = false }: {
+  label: string; nilai: string; ubah: (v: string) => void; tipe?: string; wajib?: boolean; banyak?: boolean; autoFocus?: boolean;
 }) {
   const id = `meta-${label.toLowerCase().replace(/[^a-z]+/g, "-")}`;
   return (
@@ -171,7 +176,7 @@ function Isian({ label, nilai, ubah, tipe = "text", wajib = false, banyak = fals
       <label htmlFor={id} className="mb-1 block text-[13px] font-medium text-tinta-2">{label}{wajib && <span className="text-gagal"> *</span>}</label>
       {banyak ? <textarea id={id} rows={3} value={nilai} onChange={(e) => ubah(e.target.value)}
         className="w-full resize-y rounded-md border border-garis-kuat px-3 py-2.5 text-[14px] outline-none focus:border-aksi focus-visible:ring-2 focus-visible:ring-aksi" /> :
-        <input id={id} type={tipe} required={wajib} value={nilai} onChange={(e) => ubah(e.target.value)}
+        <input id={id} type={tipe} autoFocus={autoFocus} required={wajib} value={nilai} onChange={(e) => ubah(e.target.value)}
           className="w-full rounded-md border border-garis-kuat px-3 py-2.5 text-[14px] outline-none focus:border-aksi focus-visible:ring-2 focus-visible:ring-aksi" />}
     </div>
   );

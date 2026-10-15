@@ -10,8 +10,12 @@ export default async function HalamanPenggunaAdmin() {
   const saya = await wajibAdminAtauPimpinan();
   const daftar = (await klienMentah.unsafe(`
     SELECT u.id, u.email, u.nama, u.jabatan, u.peran, u.aktif, u.dibuat_pada,
-           (SELECT count(*) FROM th_project_members m WHERE m.user_id = u.id)::int AS jumlah_proyek
+           COALESCE(m.jumlah_proyek, 0)::int AS jumlah_proyek
     FROM th_users u
+    LEFT JOIN (
+      SELECT user_id, count(*)::int AS jumlah_proyek
+      FROM th_project_members GROUP BY user_id
+    ) m ON m.user_id = u.id
     ORDER BY u.aktif DESC, u.nama
   `)) as unknown as {
     id: string; email: string; nama: string; jabatan: string | null;
@@ -21,7 +25,7 @@ export default async function HalamanPenggunaAdmin() {
   return (
     <>
       <Nav aktif="admin" peran={saya.peran} />
-      <main className="mx-auto max-w-[1120px] px-4 py-8 sm:px-6">
+      <main id="konten-utama" tabIndex={-1} className="mx-auto max-w-[1120px] px-4 py-8 sm:px-6">
         <nav aria-label="Breadcrumb" className="mb-4 text-[13px] text-tinta-3">
           <Link href="/dashboard/admin" className="hover:text-aksi">Administrasi</Link>
           <span aria-hidden="true"> / </span><span className="text-tinta-2">Pengguna</span>

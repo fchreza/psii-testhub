@@ -60,7 +60,7 @@ export default async function HalamanDashboard() {
     ? "true"
     : `p.id IN (SELECT project_id FROM th_project_members WHERE user_id = '${saya.id}'::uuid)`;
 
-  const proyek = (await klienMentah.unsafe(`
+  const proyekQuery = klienMentah.unsafe(`
     SELECT p.id, p.nama, p.unit_bisnis, p.tahap, p.aplikasi, p.modul,
            p.jenis_pengujian, p.modul_aplikasi, p.target_selesai,
            count(s.id)::int AS total,
@@ -73,9 +73,9 @@ export default async function HalamanDashboard() {
     WHERE ${saringProyek}
     GROUP BY p.id
     ORDER BY p.target_selesai NULLS LAST, p.nama
-  `)) as unknown as Proyek[];
+  `);
 
-  const perModul = (await klienMentah.unsafe(`
+  const perModulQuery = klienMentah.unsafe(`
     SELECT p.id AS project_id, p.nama AS proyek, m.kode, m.nama,
            count(s.id)::int AS total,
            count(s.id) FILTER (WHERE s.status = 'PASS')::int    AS lulus,
@@ -89,9 +89,9 @@ export default async function HalamanDashboard() {
     GROUP BY p.id, p.nama, m.kode, m.nama, m.urutan
     HAVING count(s.id) > 0
     ORDER BY p.nama, m.urutan, m.kode
-  `)) as unknown as ModulBaris[];
+  `);
 
-  const perluTindak = (await klienMentah.unsafe(`
+  const perluTindakQuery = klienMentah.unsafe(`
     SELECT p.id AS project_id, p.nama AS proyek, s.id AS scenario_id, s.kode,
            s.judul, s.status, s.catatan_tindak_lanjut, u.nama AS penguji_nama,
            s.diubah_pada
@@ -101,7 +101,14 @@ export default async function HalamanDashboard() {
     WHERE s.status IN ('FAIL','BLOCKED') AND ${saringProyek}
     ORDER BY CASE s.status WHEN 'FAIL' THEN 0 ELSE 1 END, s.diubah_pada
     LIMIT 50
-  `)) as unknown as Tertunda[];
+  `);
+
+  const [proyekRows, modulRows, tindakRows] = await Promise.all([
+    proyekQuery, perModulQuery, perluTindakQuery,
+  ]);
+  const proyek = proyekRows as unknown as Proyek[];
+  const perModul = modulRows as unknown as ModulBaris[];
+  const perluTindak = tindakRows as unknown as Tertunda[];
 
   const jumlah = proyek.reduce(
     (a, p) => ({
@@ -115,7 +122,7 @@ export default async function HalamanDashboard() {
   return (
     <>
       <Nav aktif="dashboard" peran={saya.peran} />
-      <main className="mx-auto max-w-[1200px] px-6 py-8">
+      <main id="konten-utama" tabIndex={-1} className="mx-auto max-w-[1200px] px-6 py-8">
         <header className="mb-6">
           <h1 className="text-2xl font-bold tracking-tight text-tinta">Dashboard pengujian</h1>
           <p className="mt-1 text-[14px] text-tinta-2">

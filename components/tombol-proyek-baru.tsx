@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Spinner } from "@/components/indikator-proses";
+import { useFocusTrap } from "@/components/use-focus-trap";
 
 /** Form proyek baru: hanya metadata yang dibutuhkan untuk memulai pengujian. */
 export function TombolProyekBaru({ pic }: { pic: { id: string; nama: string }[] }) {
@@ -9,6 +11,7 @@ export function TombolProyekBaru({ pic }: { pic: { id: string; nama: string }[] 
   const [sibuk, setSibuk] = useState(false);
   const [galat, setGalat] = useState<string | null>(null);
   const router = useRouter();
+  const dialogRef = useFocusTrap<HTMLElement>(buka, () => { if (!sibuk) setBuka(false); });
 
   const [f, setF] = useState({
     nama: "", pmId: "", aplikasi: "", modul: "", ruangLingkup: "", jenisPengujian: "",
@@ -31,7 +34,7 @@ export function TombolProyekBaru({ pic }: { pic: { id: string; nama: string }[] 
       <button type="button" onClick={() => { if (!sibuk) setBuka(false); }} disabled={sibuk}
         aria-label="Tutup formulir"
         className="fixed inset-0 z-30 bg-tinta/10" />
-      <aside role="dialog" aria-label="Proyek baru"
+      <aside ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="judul-proyek-baru"
         className="fixed right-0 top-0 z-40 h-screen w-full overflow-y-auto border-l border-garis bg-kartu sm:w-[46%] sm:max-w-[640px]">
         <form className="px-7 py-6"
           onSubmit={async (e) => {
@@ -55,14 +58,14 @@ export function TombolProyekBaru({ pic }: { pic: { id: string; nama: string }[] 
               setGalat("Tidak dapat terhubung. Proyek belum dibuat; coba lagi.");
             } finally { setSibuk(false); }
           }}>
-          <h2 className="mb-1 text-[20px] font-bold tracking-tight text-tinta">Proyek baru</h2>
+          <h2 id="judul-proyek-baru" className="mb-1 text-[20px] font-bold tracking-tight text-tinta">Proyek baru</h2>
           <p className="mb-5 text-[13.5px] leading-relaxed text-tinta-2">
             Pilih satu jenis pengujian. Proyek SIT hanya menampilkan SIT; proyek UAT hanya menampilkan UAT.
           </p>
 
           <div className="space-y-4">
             <Isian label="Nama proyek" wajib nilai={f.nama} ubah={(v) => set("nama", v)}
-              contoh="Penyesuaian OM-SPAN TKD sesuai PER-4/PB/2026" maksimal={200} />
+              contoh="Penyesuaian OM-SPAN TKD sesuai PER-4/PB/2026" maksimal={200} autoFocus />
             <div>
               <label htmlFor="p-pm-id" className="mb-1 block text-[13.5px] font-medium text-tinta-2">
                 PIC <span className="font-normal text-tinta-3">(opsional)</span>
@@ -112,9 +115,9 @@ export function TombolProyekBaru({ pic }: { pic: { id: string; nama: string }[] 
           )}
 
           <div className="mt-6 flex gap-3">
-            <button type="submit" disabled={sibuk}
-              className="sentuh rounded-md bg-aksi px-5 text-[14.5px] font-medium text-white disabled:opacity-60">
-              {sibuk ? "Menyimpan…" : "Simpan proyek"}
+            <button type="submit" disabled={sibuk} aria-busy={sibuk}
+              className="sentuh inline-flex items-center justify-center gap-2 rounded-md bg-aksi px-5 text-[14.5px] font-medium text-white disabled:cursor-wait disabled:opacity-60">
+              {sibuk && <Spinner className="h-4 w-4" />}{sibuk ? "Menyimpan…" : "Simpan proyek"}
             </button>
             <button type="button" disabled={sibuk} onClick={() => setBuka(false)}
               className="sentuh rounded-md border border-garis px-4 text-[14px] text-tinta-2 hover:border-garis-kuat">
@@ -128,10 +131,11 @@ export function TombolProyekBaru({ pic }: { pic: { id: string; nama: string }[] 
 }
 
 function Isian({
-  label, nilai, ubah, contoh, wajib, tipe = "text", maksimal, min, max,
+  label, nilai, ubah, contoh, wajib, tipe = "text", maksimal, min, max, autoFocus = false,
 }: {
   label: string; nilai: string; ubah: (v: string) => void;
   contoh?: string; wajib?: boolean; tipe?: string; maksimal?: number; min?: number; max?: number;
+  autoFocus?: boolean;
 }) {
   const id = `p-${label.toLowerCase().replace(/[^a-z]+/g, "-")}`;
   return (
@@ -139,7 +143,7 @@ function Isian({
       <label htmlFor={id} className="mb-1 block text-[13.5px] font-medium text-tinta-2">
         {label}{wajib && <span className="text-gagal"> *</span>}
       </label>
-      <input id={id} type={tipe} required={wajib} value={nilai} placeholder={contoh}
+      <input id={id} type={tipe} required={wajib} value={nilai} placeholder={contoh} autoFocus={autoFocus}
         maxLength={maksimal} min={min} max={max} step={tipe === "number" ? 1 : undefined}
         onChange={(e) => ubah(e.target.value)}
         className="w-full rounded-md border border-garis-kuat px-3 py-2 text-[16px] outline-none focus:border-aksi" />

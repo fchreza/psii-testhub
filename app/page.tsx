@@ -22,13 +22,19 @@ export default async function Beranda() {
     : `p.id IN (SELECT project_id FROM th_project_members WHERE user_id = '${saya.id}'::uuid)`;
 
   const ringkas = (await klienMentah.unsafe(`
-    SELECT
-      (SELECT count(*) FROM th_projects p WHERE ${cakupan})::int AS proyek,
-      (SELECT count(*) FROM th_scenarios s JOIN th_projects p ON p.id = s.project_id WHERE ${cakupan})::int AS skenario,
-      (SELECT count(*) FROM th_scenarios s JOIN th_projects p ON p.id = s.project_id WHERE s.status = 'PENDING' AND ${cakupan})::int AS belum,
-      (SELECT count(*) FROM th_scenarios s JOIN th_projects p ON p.id = s.project_id WHERE s.status = 'PASS' AND ${cakupan})::int AS lulus,
-      (SELECT count(*) FROM th_scenarios s JOIN th_projects p ON p.id = s.project_id WHERE s.status = 'FAIL' AND ${cakupan})::int AS gagal,
-      (SELECT count(*) FROM th_scenarios s JOIN th_projects p ON p.id = s.project_id WHERE s.status = 'BLOCKED' AND ${cakupan})::int AS tertunda
+    WITH proyek_terlihat AS (
+      SELECT p.id FROM th_projects p WHERE ${cakupan}
+    ), statistik_skenario AS (
+      SELECT count(*)::int AS skenario,
+             count(*) FILTER (WHERE s.status = 'PENDING')::int AS belum,
+             count(*) FILTER (WHERE s.status = 'PASS')::int AS lulus,
+             count(*) FILTER (WHERE s.status = 'FAIL')::int AS gagal,
+             count(*) FILTER (WHERE s.status = 'BLOCKED')::int AS tertunda
+      FROM th_scenarios s JOIN proyek_terlihat p ON p.id = s.project_id
+    )
+    SELECT (SELECT count(*)::int FROM proyek_terlihat) AS proyek,
+           statistik_skenario.*
+    FROM statistik_skenario
   `)) as unknown as {
     proyek: number; skenario: number; belum: number;
     lulus: number; gagal: number; tertunda: number;
@@ -54,7 +60,7 @@ export default async function Beranda() {
   return (
     <>
       <Nav aktif="beranda" peran={saya.peran} />
-      <main className="mx-auto max-w-[1100px] px-6 py-8">
+      <main id="konten-utama" tabIndex={-1} className="mx-auto max-w-[1100px] px-6 py-8">
         <header className="mb-6">
           <h1 className="text-2xl font-bold tracking-tight text-tinta">PSII TestHub</h1>
           <p className="mt-1 text-[14px] text-tinta-2">

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/format";
+import { Spinner } from "@/components/indikator-proses";
+import { useFocusTrap } from "@/components/use-focus-trap";
 
 type Pengguna = {
   id: string; email: string; nama: string; jabatan: string | null;
@@ -26,11 +28,15 @@ export function KelolaPengguna({
   const [jabatan, setJabatan] = useState("");
   const [peran, setPeran] = useState("INTERNAL_PSII");
   const [galat, setGalat] = useState<string | null>(null);
+  const [pesanInfo, setPesanInfo] = useState<string | null>(null);
   const [sandiBaru, setSandiBaru] = useState<{ nama: string; sandi: string } | null>(null);
   const [sibuk, setSibuk] = useState(false);
+  const [aksiSibuk, setAksiSibuk] = useState<string | null>(null);
   const [penggunaEdit, setPenggunaEdit] = useState<Pengguna | null>(null);
   const [draftEdit, setDraftEdit] = useState({ nama: "", email: "", jabatan: "" });
   const [sibukEdit, setSibukEdit] = useState(false);
+  const tutupEdit = () => { if (!sibukEdit) { setPenggunaEdit(null); setGalat(null); } };
+  const editDialogRef = useFocusTrap<HTMLElement>(!!penggunaEdit, tutupEdit);
 
   const kirim = (body: Record<string, unknown>) => fetch("/api/v1/pengguna", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -39,7 +45,7 @@ export function KelolaPengguna({
   const simpanEdit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!penggunaEdit) return;
-    setSibukEdit(true); setGalat(null);
+    setSibukEdit(true); setGalat(null); setPesanInfo(null);
     try {
       const r = await kirim({ aksi: "ubah", userId: penggunaEdit.id, ...draftEdit });
       const hasil = await r.json().catch(() => ({}));
@@ -47,13 +53,13 @@ export function KelolaPengguna({
       setDaftar((d) => d.map((x) => x.id === penggunaEdit.id
         ? { ...x, nama: hasil.nama, email: hasil.email, jabatan: hasil.jabatan }
         : x));
-      setPenggunaEdit(null); setGalat(null);
+      setPenggunaEdit(null); setGalat(null); setPesanInfo("Perubahan pengguna berhasil disimpan.");
     } catch { setGalat("Tidak dapat terhubung. Periksa koneksi lalu coba lagi."); }
     finally { setSibukEdit(false); }
   };
 
   const tambah = async (e: React.FormEvent) => {
-    e.preventDefault(); setSibuk(true); setGalat(null); setSandiBaru(null);
+    e.preventDefault(); setSibuk(true); setGalat(null); setPesanInfo(null); setSandiBaru(null);
     try {
       const r = await kirim({ aksi: "tambah", email, nama, jabatan, peran });
       const hasil = await r.json().catch(() => ({}));
@@ -64,6 +70,7 @@ export function KelolaPengguna({
         dibuat_pada: new Date().toISOString(), jumlah_proyek: 0,
       }]);
       setSandiBaru({ nama: nama.trim(), sandi: hasil.sandi });
+      setPesanInfo("Akun pengguna berhasil didaftarkan.");
       setNama(""); setEmail(""); setJabatan(""); setPeran("INTERNAL_PSII");
     } catch {
       setGalat("Tidak dapat terhubung. Periksa koneksi lalu coba lagi.");
@@ -71,34 +78,43 @@ export function KelolaPengguna({
   };
 
   const ubahAktif = async (p: Pengguna) => {
+    if (aksiSibuk) return;
     const aktifBaru = !p.aktif;
-    setGalat(null);
+    setGalat(null); setPesanInfo(null); setAksiSibuk(`${p.id}:aktif`);
     try {
       const r = await kirim({ aksi: aktifBaru ? "aktif" : "nonaktif", userId: p.id });
       const hasil = await r.json().catch(() => ({}));
       if (!r.ok) { setGalat(hasil.pesan ?? "Gagal mengubah status akun."); return; }
       setDaftar((d) => d.map((x) => x.id === p.id ? { ...x, aktif: aktifBaru } : x));
+      setPesanInfo(`Akun ${p.nama} berhasil ${aktifBaru ? "diaktifkan" : "dinonaktifkan"}.`);
     } catch { setGalat("Tidak dapat terhubung. Periksa koneksi lalu coba lagi."); }
+    finally { setAksiSibuk(null); }
   };
 
   const ubahPeran = async (p: Pengguna, peranBaru: string) => {
-    setGalat(null);
+    if (aksiSibuk) return;
+    setGalat(null); setPesanInfo(null); setAksiSibuk(`${p.id}:peran`);
     try {
       const r = await kirim({ aksi: "ubah_peran", userId: p.id, peran: peranBaru });
       const hasil = await r.json().catch(() => ({}));
       if (!r.ok) { setGalat(hasil.pesan ?? "Gagal mengubah peran."); return; }
       setDaftar((d) => d.map((x) => x.id === p.id ? { ...x, peran: peranBaru } : x));
+      setPesanInfo(`Peran ${p.nama} berhasil diperbarui.`);
     } catch { setGalat("Tidak dapat terhubung. Periksa koneksi lalu coba lagi."); }
+    finally { setAksiSibuk(null); }
   };
 
   const resetSandi = async (p: Pengguna) => {
-    setSandiBaru(null); setGalat(null);
+    if (aksiSibuk) return;
+    setSandiBaru(null); setGalat(null); setPesanInfo(null); setAksiSibuk(`${p.id}:sandi`);
     try {
       const r = await kirim({ aksi: "sandi_baru", userId: p.id });
       const hasil = await r.json().catch(() => ({}));
       if (!r.ok) { setGalat(hasil.pesan ?? "Gagal membuat sandi baru."); return; }
       setSandiBaru({ nama: p.nama, sandi: hasil.sandi });
+      setPesanInfo(`Sandi baru untuk ${p.nama} sudah dibuat.`);
     } catch { setGalat("Tidak dapat terhubung. Periksa koneksi lalu coba lagi."); }
+    finally { setAksiSibuk(null); }
   };
 
   return (
@@ -135,22 +151,24 @@ export function KelolaPengguna({
             <p className="rounded-lg bg-kanvas px-3 py-2 text-[12.5px] leading-relaxed text-tinta-2 sm:col-span-2 lg:col-span-3">
               {KETERANGAN_PERAN[peran]}
             </p>
-            <button type="submit" disabled={sibuk}
-              className="min-h-10 rounded-lg bg-aksi px-4 text-[13.5px] font-semibold text-white transition-colors hover:bg-aksi/90 disabled:cursor-wait disabled:opacity-60">
-              {sibuk ? "Mendaftarkan…" : "Daftarkan pengguna"}
+            <button type="submit" disabled={sibuk} aria-busy={sibuk}
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-aksi px-4 text-[13.5px] font-semibold text-white transition-colors hover:bg-aksi/90 disabled:cursor-wait disabled:opacity-60">
+              {sibuk && <Spinner className="h-4 w-4" />}{sibuk ? "Mendaftarkan…" : "Daftarkan pengguna"}
             </button>
           </form>
 
           {galat && <p role="alert" className="mt-3 rounded-lg border border-gagal bg-gagal-lembut px-3 py-2 text-[13.5px] text-gagal">{galat}</p>}
           {sandiBaru && (
             <div className="mt-4 rounded-lg border border-tertunda/40 bg-tertunda-lembut px-4 py-3" role="status">
-              <p className="text-[13.5px] font-semibold text-tertunda">Sandi awal untuk {sandiBaru.nama} — salin sekarang</p>
+              <p className="text-[13.5px] font-semibold text-tertunda">Sandi baru untuk {sandiBaru.nama} — salin sekarang</p>
               <p className="mt-2 select-all break-all font-mono text-[18px] font-bold tracking-wide text-tinta">{sandiBaru.sandi}</p>
               <p className="mt-1.5 text-[12.5px] leading-relaxed text-tinta-2">Sandi tidak dapat dilihat lagi setelah berpindah dari halaman ini. Sampaikan kepada pengguna melalui kanal yang sesuai.</p>
             </div>
           )}
         </section>
       )}
+
+      {pesanInfo && <p role="status" aria-live="polite" className="mb-3 rounded-lg border border-lulus/30 bg-lulus-lembut px-3 py-2 text-[13px] text-lulus">{pesanInfo}</p>}
 
       {galat && !bolehKelola && <p role="alert" className="mb-3 rounded-lg border border-gagal bg-gagal-lembut px-3 py-2 text-[13.5px] text-gagal">{galat}</p>}
       <div className="overflow-x-auto rounded-xl border border-garis bg-kartu shadow-sm shadow-tinta/[0.03]">
@@ -168,7 +186,7 @@ export function KelolaPengguna({
                 <td className="px-4 py-3"><span className="font-semibold text-tinta">{p.nama}</span>{p.jabatan && <span className="mt-0.5 block text-[12px] text-tinta-3">{p.jabatan}</span>}</td>
                 <td className="px-4 py-3 text-tinta-2">{p.email}</td>
                 <td className="px-4 py-3">
-                  <select value={p.peran} disabled={!bolehKelola || p.id === sayaId} onChange={(e) => void ubahPeran(p, e.target.value)} aria-label={`Peran ${p.nama}`}
+                  <select value={p.peran} disabled={!bolehKelola || p.id === sayaId || !!aksiSibuk} aria-busy={aksiSibuk === `${p.id}:peran`} onChange={(e) => void ubahPeran(p, e.target.value)} aria-label={`Peran ${p.nama}`}
                     className="max-w-[240px] rounded-md border border-garis bg-white px-2 py-1.5 text-[12px] font-medium text-tinta-2">
                     {PERAN.map((x) => <option key={x} value={x}>{x.replaceAll("_", " ")}</option>)}
                   </select>
@@ -183,8 +201,14 @@ export function KelolaPengguna({
                     Edit
                   </button>
                   {p.id !== sayaId && <>
-                    <button type="button" onClick={() => void resetSandi(p)} className="rounded-md px-2.5 py-1.5 text-[12px] font-medium text-tinta-2 hover:bg-kanvas">Sandi baru</button>
-                    <button type="button" onClick={() => void ubahAktif(p)} className={cn("ml-1 rounded-md px-2.5 py-1.5 text-[12px] font-medium", p.aktif ? "text-gagal hover:bg-gagal-lembut" : "text-lulus hover:bg-lulus-lembut")}>{p.aktif ? "Nonaktifkan" : "Aktifkan"}</button>
+                    <button type="button" onClick={() => void resetSandi(p)} disabled={!!aksiSibuk} aria-busy={aksiSibuk === `${p.id}:sandi`}
+                      className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[12px] font-medium text-tinta-2 hover:bg-kanvas disabled:cursor-wait disabled:opacity-60">
+                      {aksiSibuk === `${p.id}:sandi` && <Spinner className="h-3.5 w-3.5" />}{aksiSibuk === `${p.id}:sandi` ? "Membuat…" : "Sandi baru"}
+                    </button>
+                    <button type="button" onClick={() => void ubahAktif(p)} disabled={!!aksiSibuk} aria-busy={aksiSibuk === `${p.id}:aktif`}
+                      className={cn("ml-1 inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[12px] font-medium disabled:cursor-wait disabled:opacity-60", p.aktif ? "text-gagal hover:bg-gagal-lembut" : "text-lulus hover:bg-lulus-lembut")}>
+                      {aksiSibuk === `${p.id}:aktif` && <Spinner className="h-3.5 w-3.5" />}{aksiSibuk === `${p.id}:aktif` ? "Memperbarui…" : p.aktif ? "Nonaktifkan" : "Aktifkan"}
+                    </button>
                   </>}
                 </td>}
               </tr>
@@ -195,14 +219,14 @@ export function KelolaPengguna({
       </div>
       {penggunaEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-tinta/40 p-4">
-          <section role="dialog" aria-modal="true" aria-labelledby="judul-edit-pengguna"
+          <section ref={editDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="judul-edit-pengguna"
             className="w-full max-w-lg rounded-xl border border-garis bg-kartu p-5 shadow-xl sm:p-6">
             <h2 id="judul-edit-pengguna" className="text-lg font-bold text-tinta">Edit pengguna</h2>
             <p className="mt-1 text-[13px] text-tinta-3">Peran akun dapat diubah melalui pilihan peran pada daftar.</p>
             <form onSubmit={simpanEdit} className="mt-4 space-y-3">
               <div>
                 <label htmlFor="edit-pengguna-nama" className="mb-1 block text-[13px] font-medium text-tinta-2">Nama</label>
-                <input id="edit-pengguna-nama" required maxLength={120} value={draftEdit.nama}
+                <input id="edit-pengguna-nama" autoFocus required maxLength={120} value={draftEdit.nama}
                   onChange={(e) => setDraftEdit((d) => ({ ...d, nama: e.target.value }))}
                   className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2.5 text-[14px] outline-none focus:border-aksi" />
               </div>
@@ -220,11 +244,11 @@ export function KelolaPengguna({
               </div>
               {galat && <p role="alert" className="rounded-md border border-gagal bg-gagal-lembut px-3 py-2 text-[13px] text-gagal">{galat}</p>}
               <div className="flex justify-end gap-2 pt-2">
-                <button type="button" disabled={sibukEdit} onClick={() => { setPenggunaEdit(null); setGalat(null); }}
+                <button type="button" disabled={sibukEdit} onClick={tutupEdit}
                   className="rounded-lg border border-garis-kuat px-3.5 py-2 text-[13px] font-medium text-tinta-2 hover:bg-kanvas disabled:opacity-60">Batal</button>
-                <button type="submit" disabled={sibukEdit}
-                  className="rounded-lg bg-aksi px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-aksi/90 disabled:opacity-60">
-                  {sibukEdit ? "Menyimpan…" : "Simpan perubahan"}
+                <button type="submit" disabled={sibukEdit} aria-busy={sibukEdit}
+                  className="inline-flex items-center gap-2 rounded-lg bg-aksi px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-aksi/90 disabled:cursor-wait disabled:opacity-60">
+                  {sibukEdit && <Spinner className="h-4 w-4" />}{sibukEdit ? "Menyimpan…" : "Simpan perubahan"}
                 </button>
               </div>
             </form>

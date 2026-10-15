@@ -18,7 +18,7 @@ export default async function HalamanAdmin() {
   return (
     <>
       <Nav aktif="admin" peran={saya.peran} />
-      <main className="mx-auto max-w-[1120px] px-4 py-8 sm:px-6">
+      <main id="konten-utama" tabIndex={-1} className="mx-auto max-w-[1120px] px-4 py-8 sm:px-6">
         <header className="mb-7">
           <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.16em] text-aksi">Ruang admin</p>
           <h1 className="text-3xl font-bold tracking-tight text-tinta">Administrasi sistem</h1>

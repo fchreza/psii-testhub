@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/format";
 import type { FasePengujian } from "@/lib/fase-proyek";
+import { Spinner } from "@/components/indikator-proses";
 
 type Calon = { id: string; nama: string; email: string; peran: string };
 type Anggota = Calon & { ditambahkan_pada?: string };
@@ -17,13 +18,16 @@ export function KelolaAksesProyek({
 }: { projectId: string; calon: Calon[]; anggotaAwal: Anggota[]; faseTersedia: FasePengujian[] }) {
   const [anggota, setAnggota] = useState(anggotaAwal);
   const [pilihan, setPilihan] = useState("");
-  const [sibuk, setSibuk] = useState(false);
+  const [sibukAksi, setSibukAksi] = useState<string | null>(null);
+  const [salinSibuk, setSalinSibuk] = useState<FasePengujian | null>(null);
+  const sibuk = sibukAksi !== null;
   const [pesan, setPesan] = useState<{ teks: string; galat?: boolean } | null>(null);
   const sudahDitugaskan = useMemo(() => new Set(anggota.map((x) => x.id)), [anggota]);
   const tersedia = calon.filter((x) => !sudahDitugaskan.has(x.id));
 
   async function kirim(aksi: "tambah" | "hapus", userId: string) {
-    setPesan(null); setSibuk(true);
+    if (sibukAksi) return;
+    setPesan(null); setSibukAksi(`${aksi}:${userId}`);
     try {
       const r = await fetch("/api/v1/anggota-proyek", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -42,17 +46,19 @@ export function KelolaAksesProyek({
       }
     } catch {
       setPesan({ teks: "Tidak dapat terhubung. Periksa koneksi lalu coba lagi.", galat: true });
-    } finally { setSibuk(false); }
+    } finally { setSibukAksi(null); }
   }
 
   async function salinTautan(fase: FasePengujian) {
+    if (salinSibuk) return;
     const url = `${window.location.origin}/proyek/${encodeURIComponent(projectId)}?fase=${fase}`;
+    setPesan(null); setSalinSibuk(fase);
     try {
       await navigator.clipboard.writeText(url);
       setPesan({ teks: `Tautan ${fase} disalin. Penerima harus masuk dengan akun yang sudah ditugaskan.` });
     } catch {
       setPesan({ teks: `Salin tautan ini: ${url}` });
-    }
+    } finally { setSalinSibuk(null); }
   }
 
   return (
@@ -68,8 +74,10 @@ export function KelolaAksesProyek({
         <div className="flex flex-wrap gap-2">
           {faseTersedia.map((fase) => (
             <button key={fase} type="button" onClick={() => void salinTautan(fase)}
-              className="rounded-lg border border-garis px-3 py-2 text-[12.5px] font-semibold text-tinta-2 hover:border-garis-kuat hover:bg-kanvas">
-              Salin tautan {fase}
+              disabled={salinSibuk !== null} aria-busy={salinSibuk === fase}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-garis px-3 py-2 text-[12.5px] font-semibold text-tinta-2 hover:border-garis-kuat hover:bg-kanvas disabled:cursor-wait disabled:opacity-60">
+              {salinSibuk === fase && <Spinner className="h-3.5 w-3.5" />}
+              {salinSibuk === fase ? "Menyalin…" : `Salin tautan ${fase}`}
             </button>
           ))}
         </div>
@@ -82,8 +90,9 @@ export function KelolaAksesProyek({
           <option value="">{tersedia.length ? "Pilih akun penguji untuk ditugaskan…" : "Tidak ada akun penguji yang tersedia"}</option>
           {tersedia.map((x) => <option key={x.id} value={x.id}>{x.nama} · {namaPeran[x.peran] ?? x.peran} · {x.email}</option>)}
         </select>
-        <button type="submit" disabled={!pilihan || sibuk} className="min-h-10 rounded-lg bg-aksi px-4 text-[13px] font-semibold text-white hover:bg-aksi/90 disabled:cursor-not-allowed disabled:opacity-50">
-          {sibuk ? "Menyimpan…" : "Tugaskan penguji"}
+        <button type="submit" disabled={!pilihan || sibuk} aria-busy={sibuk}
+          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-aksi px-4 text-[13px] font-semibold text-white hover:bg-aksi/90 disabled:cursor-not-allowed disabled:opacity-50">
+          {sibuk && <Spinner className="h-4 w-4" />}{sibuk ? "Menyimpan…" : "Tugaskan penguji"}
         </button>
       </form>
 
@@ -104,9 +113,10 @@ export function KelolaAksesProyek({
                   <p className="truncate text-[13px] font-medium text-tinta">{x.nama}</p>
                   <p className="truncate text-[11.5px] text-tinta-3">{x.email} · {namaPeran[x.peran] ?? x.peran}</p>
                 </div>
-                <button type="button" onClick={() => void kirim("hapus", x.id)} disabled={sibuk}
-                  className="rounded-md px-2.5 py-1.5 text-[12px] font-medium text-gagal hover:bg-gagal-lembut disabled:opacity-50">
-                  Cabut akses
+                <button type="button" onClick={() => void kirim("hapus", x.id)} disabled={sibuk} aria-busy={sibukAksi === `hapus:${x.id}`}
+                  className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium text-gagal hover:bg-gagal-lembut disabled:cursor-wait disabled:opacity-50">
+                  {sibukAksi === `hapus:${x.id}` && <Spinner className="h-3.5 w-3.5" />}
+                  {sibukAksi === `hapus:${x.id}` ? "Mencabut akses…" : "Cabut akses"}
                 </button>
               </li>
             ))}

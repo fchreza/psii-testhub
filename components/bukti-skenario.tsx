@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/format";
+import { Spinner } from "@/components/indikator-proses";
+import { useFocusTrap } from "@/components/use-focus-trap";
 
 type Bukti = {
   id: string; path: string; nama_asli: string | null;
@@ -59,16 +61,24 @@ async function kecilkan(berkas: File): Promise<File> {
 }
 
 export function BuktiSkenario({
-  projectId, scenarioId, bolehUbah, bolehHapus,
-}: { projectId: string; scenarioId: string; bolehUbah: boolean; bolehHapus: boolean }) {
+  projectId, scenarioId, bolehUbah, bolehHapus, onDataMutasi,
+}: { projectId: string; scenarioId: string; bolehUbah: boolean; bolehHapus: boolean; onDataMutasi?: () => void }) {
   const [daftar, setDaftar] = useState<Bukti[]>([]);
   const [muat, setMuat] = useState(true);
   const [sibuk, setSibuk] = useState<string | null>(null);
   const [galat, setGalat] = useState<string | null>(null);
+  const [sukses, setSukses] = useState<string | null>(null);
   const [perbesar, setPerbesar] = useState<Bukti | null>(null);
+  const [konfirmasiHapus, setKonfirmasiHapus] = useState<Bukti | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const operasiAktif = useRef<string | null>(null);
+  const previewRef = useFocusTrap<HTMLDivElement>(perbesar !== null, () => setPerbesar(null));
+  const hapusDialogRef = useFocusTrap<HTMLElement>(konfirmasiHapus !== null, () => {
+    if (!operasiAktif.current) { setKonfirmasiHapus(null); setGalat(null); }
+  });
 
   const ambil = useCallback(async () => {
+    setMuat(true);
     setGalat(null);
     try {
       const r = await fetch("/api/v1/bukti", {
@@ -85,18 +95,12 @@ export function BuktiSkenario({
 
   useEffect(() => { void ambil(); }, [ambil]);
 
-  // Escape menutup pratinjau. Tanpa ini, satu-satunya cara keluar adalah
-  // mengklik tepat di luar gambar — dan itu tidak jelas bagi pengguna.
-  useEffect(() => {
-    if (!perbesar) return;
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") setPerbesar(null); };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  }, [perbesar]);
-
   async function unggah(berkasAsli: File) {
-    setGalat(null);
-    setSibuk(berkasAsli.name);
+    if (operasiAktif.current) return;
+    const kunciOperasi = `unggah:${berkasAsli.name}`;
+    operasiAktif.current = kunciOperasi;
+    setGalat(null); setSukses(null);
+    setSibuk(kunciOperasi);
     try {
       const berkas = await kecilkan(berkasAsli);
 
@@ -142,17 +146,23 @@ export function BuktiSkenario({
         setGalat(j.pesan); return;
       }
       await ambil();
+      setSukses(`${berkas.name} berhasil diunggah.`);
+      onDataMutasi?.();
     } catch (e) {
       setGalat(e instanceof Error ? e.message : "Gagal mengunggah");
     } finally {
-      setSibuk(null);
+      if (operasiAktif.current === kunciOperasi) {
+        operasiAktif.current = null;
+        setSibuk(null);
+      }
       if (inputRef.current) inputRef.current.value = "";
     }
   }
 
   async function hapus(b: Bukti) {
-    if (!window.confirm(`Hapus bukti “${b.nama_asli ?? "berkas"}”? Tindakan ini tidak dapat dibatalkan.`)) return;
-    setGalat(null);
+    if (operasiAktif.current) return;
+    operasiAktif.current = b.id;
+    setGalat(null); setSukses(null);
     setSibuk(b.id);
     try {
       const r = await fetch("/api/v1/bukti", {
@@ -162,16 +172,25 @@ export function BuktiSkenario({
       const j = await r.json().catch(() => ({ pesan: "Respons server tidak dapat dibaca." }));
       if (!r.ok) { setGalat(j.pesan ?? "Gagal menghapus bukti."); return; }
       setDaftar((d) => d.filter((x) => x.id !== b.id));
+      setKonfirmasiHapus(null);
+      setGalat(null);
+      setSukses(`${b.nama_asli ?? "Bukti"} berhasil dihapus.`);
+      onDataMutasi?.();
     } catch {
       setGalat("Tidak dapat terhubung. Bukti belum dihapus.");
-    } finally { setSibuk(null); }
+    } finally {
+      if (operasiAktif.current === b.id) {
+        operasiAktif.current = null;
+        setSibuk(null);
+      }
+    }
   }
 
   const gambar = daftar.filter((b) => b.tipe?.startsWith("image/"));
   const lain = daftar.filter((b) => !b.tipe?.startsWith("image/"));
 
   return (
-    <div>
+    <div aria-busy={muat || !!sibuk}>
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="text-[12.5px] font-semibold uppercase tracking-wide text-tinta-3">
           Bukti {daftar.length > 0 && <span className="tabular">({daftar.length})</span>}
@@ -186,10 +205,10 @@ export function BuktiSkenario({
                 // tersendat kalau beberapa unggahan besar jalan bersamaan.
                 void (async () => { for (const f of fs) await unggah(f); })();
               }} />
-            <button type="button" disabled={!!sibuk}
+            <button type="button" disabled={!!sibuk} aria-busy={!!sibuk}
               onClick={() => inputRef.current?.click()}
-              className="rounded border border-garis px-2.5 py-1 text-[13px] font-medium text-tinta-2 hover:border-garis-kuat disabled:opacity-50">
-              {sibuk ? "Mengunggah…" : "Tambah bukti"}
+              className="inline-flex items-center gap-1.5 rounded border border-garis px-2.5 py-1 text-[13px] font-medium text-tinta-2 hover:border-garis-kuat disabled:cursor-wait disabled:opacity-50">
+              {sibuk && <Spinner className="h-3.5 w-3.5" />}{sibuk ? "Mengunggah…" : "Tambah bukti"}
             </button>
           </>
         )}
@@ -200,13 +219,18 @@ export function BuktiSkenario({
           {galat}
         </p>
       )}
+      {sukses && <p role="status" aria-live="polite" className="mb-2 rounded border border-lulus/30 bg-lulus-lembut px-2.5 py-1.5 text-[13px] text-lulus">{sukses}</p>}
 
       {muat ? (
-        <p className="text-[13px] text-tinta-3">Memuat bukti…</p>
+        <p role="status" className="inline-flex items-center gap-2 text-[13px] text-tinta-3"><Spinner className="h-4 w-4" />Memuat bukti…</p>
       ) : galat && daftar.length === 0 ? (
-        <p className="rounded border border-dashed border-garis px-3 py-4 text-center text-[13px] text-tinta-3">
-          Daftar bukti belum bisa ditampilkan.
-        </p>
+        <div className="rounded border border-dashed border-garis px-3 py-4 text-center">
+          <p className="text-[13px] text-tinta-3">Daftar bukti belum bisa ditampilkan.</p>
+          <button type="button" onClick={() => void ambil()} disabled={muat} aria-busy={muat}
+            className="sentuh mt-2 inline-flex items-center gap-2 rounded border border-garis px-3 text-[12.5px] font-medium text-tinta-2 disabled:opacity-50">
+            {muat && <Spinner className="h-3.5 w-3.5" />}Coba lagi
+          </button>
+        </div>
       ) : daftar.length === 0 ? (
         <p className="rounded border border-dashed border-garis px-3 py-4 text-center text-[13px] text-tinta-3">
           Belum ada bukti
@@ -225,10 +249,10 @@ export function BuktiSkenario({
                       loading="lazy" className="aspect-[4/3] w-full object-cover" />
                   </button>
                   {bolehHapus && (
-                    <button type="button" onClick={() => void hapus(b)} disabled={sibuk === b.id}
+                    <button type="button" onClick={() => { setGalat(null); setKonfirmasiHapus(b); }} disabled={!!sibuk} aria-busy={sibuk === b.id}
                       aria-label={`Hapus ${b.nama_asli ?? "bukti"}`}
-                      className="absolute right-1 top-1 rounded bg-kartu/95 px-1.5 py-0.5 text-[11px] font-medium text-gagal opacity-0 shadow-sm transition-opacity focus:opacity-100 group-hover:opacity-100">
-                      Hapus
+                      className="absolute right-1 top-1 inline-flex items-center gap-1 rounded bg-kartu/95 px-1.5 py-0.5 text-[11px] font-medium text-gagal opacity-0 shadow-sm transition-opacity focus:opacity-100 group-hover:opacity-100">
+                      {sibuk === b.id && <Spinner className="h-3 w-3" />}{sibuk === b.id ? "Menghapus…" : "Hapus"}
                     </button>
                   )}
                 </li>
@@ -247,10 +271,10 @@ export function BuktiSkenario({
                     {b.ukuran ? `${Math.round(b.ukuran / 1024)} KB` : ""}
                   </span>
                   {bolehHapus && (
-                    <button type="button" onClick={() => void hapus(b)} disabled={sibuk === b.id}
+                    <button type="button" onClick={() => { setGalat(null); setKonfirmasiHapus(b); }} disabled={!!sibuk} aria-busy={sibuk === b.id}
                       aria-label={`Hapus ${b.nama_asli ?? "berkas"}`}
-                      className="shrink-0 text-[12px] text-tinta-3 hover:text-gagal">
-                      Hapus
+                      className="inline-flex shrink-0 items-center gap-1 text-[12px] text-tinta-3 hover:text-gagal">
+                      {sibuk === b.id && <Spinner className="h-3 w-3" />}{sibuk === b.id ? "Menghapus…" : "Hapus"}
                     </button>
                   )}
                 </li>
@@ -260,8 +284,34 @@ export function BuktiSkenario({
         </>
       )}
 
+      {konfirmasiHapus && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <button type="button" aria-label="Tutup konfirmasi hapus bukti" disabled={!!sibuk}
+            onClick={() => { setKonfirmasiHapus(null); setGalat(null); }}
+            className="absolute inset-0 bg-tinta/45 disabled:cursor-wait" />
+          <section ref={hapusDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="judul-hapus-bukti"
+            className="relative z-10 w-full max-w-lg rounded-xl border border-garis bg-kartu p-5 shadow-xl sm:p-6">
+            <h2 id="judul-hapus-bukti" className="text-lg font-bold text-tinta">Hapus bukti?</h2>
+            <p className="mt-2 break-words text-[13.5px] leading-relaxed text-tinta-2">
+              Bukti <strong>{konfirmasiHapus.nama_asli ?? "berkas"}</strong> akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.
+            </p>
+            {galat && <p role="alert" className="mt-3 rounded-md border border-gagal bg-gagal-lembut px-3 py-2 text-[13px] text-gagal">{galat}</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" autoFocus disabled={!!sibuk}
+                onClick={() => { setKonfirmasiHapus(null); setGalat(null); }}
+                className="rounded-lg border border-garis-kuat px-3.5 py-2 text-[13px] font-medium text-tinta-2 hover:bg-kanvas disabled:opacity-60">Batal</button>
+              <button type="button" disabled={!!sibuk} aria-busy={!!sibuk}
+                onClick={() => void hapus(konfirmasiHapus)}
+                className="inline-flex items-center gap-2 rounded-lg bg-gagal px-3.5 py-2 text-[13px] font-semibold text-white disabled:cursor-wait disabled:opacity-60">
+                {sibuk && <Spinner className="h-4 w-4" />}{sibuk ? "Menghapus…" : "Hapus bukti"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {perbesar && (
-        <div role="dialog" aria-label="Pratinjau bukti"
+        <div ref={previewRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Pratinjau bukti"
           className="fixed inset-0 z-50 flex flex-col bg-tinta/80 p-4"
           onClick={() => setPerbesar(null)}>
           <div className="mb-2 flex shrink-0 items-center justify-between gap-3">

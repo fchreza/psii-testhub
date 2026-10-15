@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Suspense, useState } from "react";
+import { Spinner } from "@/components/indikator-proses";
 
 function FormMasuk() {
   const [email, setEmail] = useState("");
@@ -15,32 +16,33 @@ function FormMasuk() {
   const kirim = async (e: React.FormEvent) => {
     e.preventDefault();
     setSibuk(true); setGalat(null);
-    const r = await fetch("/api/v1/masuk", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, sandi }),
-    });
-    setSibuk(false);
-    if (r.ok) {
-      /*
-       * `refresh()` sebelum `push()`: tanpa ini, halaman tujuan bisa dirender
-       * dari cache router dan tetap menampilkan halaman masuk — pengguna
-       * merasa sandinya benar tapi tidak terjadi apa-apa.
-       */
-      router.refresh();
-      const lanjut = cari.get("lanjut");
-      const aman = lanjut && lanjut.startsWith("/") && !lanjut.startsWith("//") && !lanjut.includes(String.fromCharCode(92))
-        ? lanjut
-        : "/";
-      router.push(aman);
-    } else {
+    try {
+      const r = await fetch("/api/v1/masuk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, sandi }),
+      });
+      if (r.ok) {
+        // Segarkan sesi sebelum berpindah supaya router tidak memakai halaman anonim yang tersimpan.
+        router.refresh();
+        const lanjut = cari.get("lanjut");
+        const aman = lanjut && lanjut.startsWith("/") && !lanjut.startsWith("//") && !lanjut.includes(String.fromCharCode(92))
+          ? lanjut
+          : "/";
+        router.push(aman);
+        return;
+      }
       const { pesan } = await r.json().catch(() => ({ pesan: "Gagal masuk" }));
       setGalat(pesan ?? "Gagal masuk");
+    } catch {
+      setGalat("Tidak dapat terhubung. Periksa koneksi lalu coba lagi.");
+    } finally {
+      setSibuk(false);
     }
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-6">
+    <main id="konten-utama" tabIndex={-1} className="flex min-h-screen items-center justify-center px-6">
       <div className="w-full max-w-[26rem]">
         <div className="rounded-xl border border-garis bg-kartu p-7">
           <h1 className="text-[22px] font-bold tracking-tight text-tinta">PSII TestHub</h1>
@@ -71,9 +73,9 @@ function FormMasuk() {
               </p>
             )}
 
-            <button type="submit" disabled={sibuk}
-              className="sentuh w-full rounded-md bg-aksi text-[15px] font-medium text-white disabled:opacity-60">
-              {sibuk ? "Memeriksa…" : "Masuk"}
+            <button type="submit" disabled={sibuk} aria-busy={sibuk}
+              className="sentuh inline-flex w-full items-center justify-center gap-2 rounded-md bg-aksi text-[15px] font-medium text-white disabled:cursor-wait disabled:opacity-60">
+              {sibuk && <Spinner className="h-4 w-4" />}{sibuk ? "Memeriksa…" : "Masuk"}
             </button>
           </form>
         </div>
@@ -92,7 +94,9 @@ function FormMasuk() {
  */
 export default function HalamanMasuk() {
   return (
-    <Suspense fallback={<main className="min-h-screen" />}>
+    <Suspense fallback={<main id="konten-utama" tabIndex={-1} aria-busy="true" className="flex min-h-screen items-center justify-center px-6">
+      <p role="status" aria-live="polite" className="inline-flex items-center gap-2 text-[14px] text-tinta-2"><Spinner className="h-4 w-4" />Memuat formulir masuk…</p>
+    </main>}>
       <FormMasuk />
     </Suspense>
   );

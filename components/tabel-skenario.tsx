@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { cn, STATUS_UJI, labelStatus } from "@/lib/format";
 import { tanggalID } from "@/lib/waktu";
 import { PanelSkenario } from "./panel-skenario";
+import { Spinner } from "@/components/indikator-proses";
+import { useFocusTrap } from "@/components/use-focus-trap";
 
 export type Skenario = {
   id: string; kode: string; fase: string; judul: string;
@@ -28,26 +30,35 @@ const STATUS_PILIHAN = ["PENDING","PASS","FAIL","BLOCKED"];
  * yang terjadi pada spreadsheet di kantor (10 dari 42 skenario tidak terisi).
  */
 export function TabelSkenario({
-  projectId, fase, skenarioAwal, modul, orang, sayaId, bolehUbah, bolehKelolaSkenario,
+  projectId, fase, skenarioAwal, modul, orang, sayaId, bolehUbah, bolehKelolaSkenario, onDataMutasi, onDraftChange,
 }: {
   projectId: string; fase: string; skenarioAwal: Skenario[];
   modul: Modul[]; orang: Orang[]; sayaId: string; bolehUbah: boolean; bolehKelolaSkenario: boolean;
+  onDataMutasi?: () => void;
+  onDraftChange?: (active: boolean) => void;
 }) {
   const [data, setData] = useState<Skenario[]>(skenarioAwal);
   const dataRef = useRef<Skenario[]>(skenarioAwal);
   const antreanSimpan = useRef(new Map<string, Promise<boolean>>());
+  const barisMutasiAktif = useRef(new Set<string>());
+  const [barisSibuk, setBarisSibuk] = useState<Set<string>>(() => new Set());
   const [pesan, setPesan] = useState<{ jenis: "galat" | "info"; teks: string } | null>(null);
-  const [sibuk, setSibuk] = useState(false);
-  const [hapusSibuk, setHapusSibuk] = useState<string | null>(null);
+  const [jumlahSimpanAktif, setJumlahSimpanAktif] = useState(0);
+  const [hapusSibuk, setHapusSibuk] = useState<Set<string>>(() => new Set());
+  const hapusAktif = useRef(new Set<string>());
+  const [konfirmasiHapus, setKonfirmasiHapus] = useState<Skenario | null>(null);
+  const [hapusGalat, setHapusGalat] = useState<string | null>(null);
   const [saring, setSaring] = useState({ status: "", modul: "", penguji: "", cari: "" });
   // Skenario yang panelnya sedang terbuka. Disimpan sebagai ID, bukan objeknya:
   // objek yang disimpan akan basi begitu datanya diubah di tempat.
   const [bukaPanel, setBukaPanel] = useState<string | null>(null);
+  const hapusDialogRef = useFocusTrap<HTMLElement>(konfirmasiHapus !== null, () => {
+    if (hapusSibuk.size === 0) { setKonfirmasiHapus(null); setHapusGalat(null); }
+  });
 
   useEffect(() => {
     dataRef.current = skenarioAwal;
     setData(skenarioAwal);
-    setBukaPanel(null);
   }, [projectId, fase, skenarioAwal]);
 
   const perbaruiData = (ubahData: (baris: Skenario[]) => Skenario[]) => {
@@ -63,12 +74,57 @@ export function TabelSkenario({
    * Simpan berurutan per skenario. Perubahan cepat pada kolom berbeda tidak
    * lagi memakai token versi yang sama, dan draf tetap terbuka jika gagal.
    */
+  const buatSkenarioDariDraf = async (id: string, tambalan: Record<string, unknown>): Promise<boolean> => {
+    const draf = dataRef.current.find((x) => x.id === id);
+    if (!draf) return false;
+    const judul = String(tambalan.judul ?? draf.judul).trim();
+    if (!judul) {
+      setPesan({ jenis: "galat", teks: "Judul skenario wajib diisi sebelum skenario dibuat." });
+      return false;
+    }
+
+    setJumlahSimpanAktif((n) => n + 1);
+    barisMutasiAktif.current.add(id);
+    setBarisSibuk(new Set(barisMutasiAktif.current));
+    setPesan(null);
+    try {
+      const r = await fetch("/api/v1/skenario", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aksi: "tambah", projectId, fase, moduleId: draf.module_id, judul }),
+      });
+      const j = await r.json().catch(() => ({ pesan: "Respons server tidak dapat dibaca." }));
+      if (!r.ok) {
+        setPesan({ jenis: "galat", teks: j.pesan ?? "Gagal membuat skenario. Draf Anda tetap tersedia." });
+        return false;
+      }
+
+      const dibuat: Skenario = { ...draf, id: j.id, kode: j.kode, judul, versi: j.versi, diubah_pada: j.diubahPada };
+      perbaruiData((baris) => [...baris.filter((x) => x.id !== id), dibuat]);
+      setBukaPanel(j.id);
+      onDraftChange?.(false);
+      setPesan({ jenis: "info", teks: "Skenario berhasil dibuat." });
+      onDataMutasi?.();
+      return true;
+    } catch {
+      setPesan({ jenis: "galat", teks: "Tidak dapat terhubung. Draf tetap tersedia; coba simpan lagi." });
+      return false;
+    } finally {
+      setJumlahSimpanAktif((n) => Math.max(0, n - 1));
+      barisMutasiAktif.current.delete(id);
+      setBarisSibuk(new Set(barisMutasiAktif.current));
+    }
+  };
+
   const simpan = (id: string, tambalan: Record<string, unknown>): Promise<boolean> => {
+    if (id.startsWith("draft:")) return buatSkenarioDariDraf(id, tambalan);
     const sebelumnya = antreanSimpan.current.get(id) ?? Promise.resolve(true);
     const permintaan = sebelumnya.catch(() => false).then(async () => {
       const lama = dataRef.current.find((x) => x.id === id);
       if (!lama) return false;
       setPesan(null);
+      setJumlahSimpanAktif((n) => n + 1);
+      barisMutasiAktif.current.add(id);
+      setBarisSibuk(new Set(barisMutasiAktif.current));
 
       try {
         const r = await fetch("/api/v1/skenario", {
@@ -96,10 +152,15 @@ export function TabelSkenario({
         if ("moduleId" in tambalan) lokal.module_id = tambalan.moduleId as string | null;
         if ("siapRetest" in tambalan) lokal.siap_retest = tambalan.siapRetest as boolean;
         ubah(id, { ...lokal, versi: j.versi, diubah_pada: j.diubahPada });
+        onDataMutasi?.();
         return true;
       } catch {
         setPesan({ jenis: "galat", teks: "Tidak dapat terhubung. Draf Anda tetap tersedia; coba simpan lagi." });
         return false;
+      } finally {
+        setJumlahSimpanAktif((n) => Math.max(0, n - 1));
+        barisMutasiAktif.current.delete(id);
+        setBarisSibuk(new Set(barisMutasiAktif.current));
       }
     });
 
@@ -110,44 +171,61 @@ export function TabelSkenario({
     return permintaan;
   };
 
-  const tambah = async (moduleId: string | null) => {
-    setSibuk(true); setPesan(null);
-    try {
-      const r = await fetch("/api/v1/skenario", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ aksi: "tambah", projectId, fase, moduleId, judul: "Skenario baru" }),
-      });
-      const j = await r.json().catch(() => ({ pesan: "Respons server tidak dapat dibaca." }));
-      if (!r.ok) { setPesan({ jenis: "galat", teks: j.pesan ?? "Gagal menambah skenario." }); return; }
-      perbaruiData((baris) => [...baris, {
-        id: j.id, kode: j.kode, fase, judul: "Skenario baru",
-        langkah_pengujian: null, hasil_diharapkan: null, hasil_aktual: null,
-        status: "PENDING", catatan_tindak_lanjut: null,
-        siap_retest: false, module_id: moduleId, urutan: dataRef.current.length,
-        penguji_id: null, penguji_nama: null, jumlah_bukti: 0,
-        diubah_pada: j.diubahPada, versi: j.versi,
-      }]);
-    } catch {
-      setPesan({ jenis: "galat", teks: "Tidak dapat terhubung. Skenario belum ditambahkan; coba lagi." });
-    } finally { setSibuk(false); }
+  const tambah = (moduleId: string | null) => {
+    const drafAda = dataRef.current.find((x) => x.id.startsWith("draft:"));
+    if (drafAda) { setBukaPanel(drafAda.id); return; }
+    const id = `draft:${Date.now()}`;
+    perbaruiData((baris) => [...baris, {
+      id, kode: "DRAF", fase, judul: "",
+      langkah_pengujian: null, hasil_diharapkan: null, hasil_aktual: null,
+      status: "PENDING", catatan_tindak_lanjut: null, siap_retest: false,
+      module_id: moduleId, urutan: dataRef.current.length,
+      penguji_id: null, penguji_nama: null, jumlah_bukti: 0,
+      diubah_pada: new Date().toISOString(), versi: "draft",
+    }]);
+    onDraftChange?.(true);
+    setPesan(null);
+    setBukaPanel(id);
   };
 
   const hapus = async (s: Skenario) => {
-    if (!window.confirm(`Hapus skenario ${s.kode} — ${s.judul}? Tindakan ini tidak dapat dibatalkan.`)) return;
+    if (s.id.startsWith("draft:")) {
+      perbaruiData((baris) => baris.filter((x) => x.id !== s.id));
+      if (bukaPanel === s.id) setBukaPanel(null);
+      onDraftChange?.(false);
+      setKonfirmasiHapus(null);
+      setHapusGalat(null);
+      setPesan({ jenis: "info", teks: "Draf skenario dibuang; tidak ada perubahan tersimpan." });
+      return;
+    }
+    if (hapusAktif.current.has(s.id)) return;
+    setHapusGalat(null);
     setPesan(null);
-    setHapusSibuk(s.id);
+    hapusAktif.current.add(s.id);
+    setHapusSibuk(new Set(hapusAktif.current));
     try {
       const r = await fetch("/api/v1/skenario", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ aksi: "hapus", projectId, scenarioId: s.id }),
       });
       const j = await r.json().catch(() => ({ pesan: "Respons server tidak dapat dibaca." }));
-      if (!r.ok) { setPesan({ jenis: "galat", teks: j.pesan ?? "Gagal menghapus skenario." }); return; }
+      if (!r.ok) {
+        const error = j.pesan ?? "Gagal menghapus skenario.";
+        setHapusGalat(error); setPesan({ jenis: "galat", teks: error }); return;
+      }
       perbaruiData((baris) => baris.filter((x) => x.id !== s.id));
       if (bukaPanel === s.id) setBukaPanel(null);
+      setKonfirmasiHapus(null);
+      setHapusGalat(null);
+      setPesan({ jenis: "info", teks: "Skenario berhasil dihapus." });
+      onDataMutasi?.();
     } catch {
-      setPesan({ jenis: "galat", teks: "Tidak dapat terhubung. Skenario belum dihapus." });
-    } finally { setHapusSibuk(null); }
+      const error = "Tidak dapat terhubung. Skenario belum dihapus.";
+      setHapusGalat(error); setPesan({ jenis: "galat", teks: error });
+    } finally {
+      hapusAktif.current.delete(s.id);
+      setHapusSibuk(new Set(hapusAktif.current));
+    }
   };
 
   // ---- penyaringan ----
@@ -219,12 +297,13 @@ export function TabelSkenario({
         </div>
 
         <p className="text-[13px] text-tinta-3">
-          {tersaring.length} dari {data.length} skenario
+          {tersaring.filter((x) => !x.id.startsWith("draft:")).length} dari {data.filter((x) => !x.id.startsWith("draft:")).length} skenario
+          {tersaring.some((x) => x.id.startsWith("draft:")) && " · draf lokal belum disimpan"}
         </p>
       </div>
 
       {pesan && (
-        <div role="alert" className={cn(
+        <div role={pesan.jenis === "galat" ? "alert" : "status"} aria-live={pesan.jenis === "galat" ? "assertive" : "polite"} className={cn(
           "mb-3 rounded-lg border px-4 py-2.5 text-[13.5px]",
           pesan.jenis === "galat"
             ? "border-gagal bg-gagal-lembut text-gagal"
@@ -232,6 +311,12 @@ export function TabelSkenario({
         )}>
           {pesan.teks}
         </div>
+      )}
+
+      {jumlahSimpanAktif > 0 && (
+        <p role="status" aria-live="polite" className="mb-3 inline-flex items-center gap-2 text-[12.5px] text-tinta-3">
+          <Spinner className="h-3.5 w-3.5 text-aksi" /> Menyimpan perubahan skenario…
+        </p>
       )}
 
       {data.length === 0 ? (
@@ -242,8 +327,8 @@ export function TabelSkenario({
             skrip <code className="rounded bg-kanvas px-1">npm run impor</code>.
           </p>
           {bolehUbah && (
-            <button type="button" onClick={() => void tambah(modul[0]?.id ?? null)} disabled={sibuk}
-              className="sentuh mt-4 rounded-md bg-aksi px-4 text-[14px] font-medium text-white disabled:opacity-60">
+            <button type="button" onClick={() => tambah(modul[0]?.id ?? null)}
+              className="sentuh mt-4 inline-flex items-center justify-center gap-2 rounded-md bg-aksi px-4 text-[14px] font-medium text-white">
               Tambah skenario
             </button>
           )}
@@ -288,34 +373,36 @@ export function TabelSkenario({
                                 Judulnya tidak lagi diketik di tabel supaya klik-untuk-
                                 buka dan klik-untuk-ketik tidak berebut tempat yang sama. */}
                             <button type="button" onClick={() => setBukaPanel(s.id)}
+                              aria-label={`Buka ${s.id.startsWith("draft:") ? "draf skenario baru" : `skenario ${s.kode}`}`}
                               className="block w-full whitespace-pre-wrap break-words rounded px-1 py-0.5 text-left font-medium text-tinta hover:bg-kanvas">
-                              {s.judul}
+                              {s.judul || (s.id.startsWith("draft:") ? "Skenario baru" : "—")}
                             </button>
                           </td>
 
                           <td className="max-w-[280px] px-3 py-2">
-                            <TeksSel nilai={s.langkah_pengujian ?? ""} bolehUbah={bolehKelolaSkenario}
+                            <TeksSel nilai={s.langkah_pengujian ?? ""} ariaLabel={`Langkah pengujian ${s.kode}`} bolehUbah={bolehKelolaSkenario} disabled={barisSibuk.has(s.id)}
                               simpan={(v) => simpan(s.id, { langkahPengujian: v })} banyakBaris />
                           </td>
 
                           <td className="max-w-[280px] px-3 py-2">
-                            <TeksSel nilai={s.hasil_diharapkan ?? ""} bolehUbah={bolehKelolaSkenario}
+                            <TeksSel nilai={s.hasil_diharapkan ?? ""} ariaLabel={`Hasil yang diharapkan ${s.kode}`} bolehUbah={bolehKelolaSkenario} disabled={barisSibuk.has(s.id)}
                               simpan={(v) => simpan(s.id, { hasilDiharapkan: v })} banyakBaris />
                           </td>
 
                           <td className="max-w-[280px] px-3 py-2">
-                            <TeksSel nilai={s.hasil_aktual ?? ""} bolehUbah={bolehUbah}
+                            <TeksSel nilai={s.hasil_aktual ?? ""} ariaLabel={`Hasil aktual ${s.kode}`} bolehUbah={bolehUbah} disabled={barisSibuk.has(s.id)}
                               simpan={(v) => simpan(s.id, { hasilAktual: v })} banyakBaris />
                           </td>
 
                           <td className="px-3 py-2">
-                            <select value={s.penguji_id ?? ""} disabled={!bolehKelolaSkenario}
+                            <select value={s.penguji_id ?? ""} disabled={!bolehKelolaSkenario || barisSibuk.has(s.id)} aria-busy={barisSibuk.has(s.id)}
                               onChange={(e) => void simpan(s.id, { pengujiId: e.target.value || null })}
                               aria-label={`Penguji ${s.kode}`}
                               className="max-w-[150px] rounded border border-transparent bg-transparent px-1 py-1 text-[13.5px] text-tinta-2 hover:border-garis focus:border-aksi focus:outline-none">
                               <option value="">—</option>
                               {orang.map((o) => <option key={o.id} value={o.id}>{o.nama}</option>)}
                             </select>
+                            {barisSibuk.has(s.id) && <Spinner className="ml-1 inline h-3.5 w-3.5" />}
                           </td>
 
                           {/* Kolom Bukti: unggahan berkas dikerjakan di Langkah 7.
@@ -335,12 +422,13 @@ export function TabelSkenario({
                           </td>
 
                           <td className="px-3 py-2">
-                            <select value={s.status} disabled={!bolehUbah}
+                            <select value={s.status} disabled={!bolehUbah || barisSibuk.has(s.id)} aria-busy={barisSibuk.has(s.id)}
                               onChange={(e) => void simpan(s.id, { status: e.target.value })}
                               aria-label={`Status ${s.kode}`}
                               className={cn("rounded px-2 py-1 text-[13px] font-medium", st.kelas)}>
                               {STATUS_PILIHAN.map((x) => <option key={x} value={x}>{labelStatus(x)}</option>)}
                             </select>
+                            {barisSibuk.has(s.id) && <Spinner className="ml-1 inline h-3.5 w-3.5" />}
                           </td>
 
                           <td className="max-w-[260px] px-3 py-2">
@@ -365,10 +453,13 @@ export function TabelSkenario({
 
                           <td className="px-2 py-2 text-right">
                             {bolehKelolaSkenario && (
-                              <button type="button" onClick={() => void hapus(s)} disabled={hapusSibuk === s.id}
-                                aria-label={`Hapus ${s.kode}`} title="Hapus skenario"
-                                className="rounded px-2 py-1 text-[12.5px] text-tinta-3 opacity-0 transition-opacity hover:bg-gagal-lembut hover:text-gagal focus:opacity-100 group-hover:opacity-100">
-                                {hapusSibuk === s.id ? "Menghapus…" : "Hapus"}
+                              <button type="button" onClick={() => { setHapusGalat(null); setKonfirmasiHapus(s); }} disabled={hapusSibuk.has(s.id)}
+                                aria-label={s.id.startsWith("draft:") ? "Buang draf skenario" : `Hapus ${s.kode}`}
+                                title={s.id.startsWith("draft:") ? "Buang draf" : "Hapus skenario"}
+                                aria-busy={hapusSibuk.has(s.id)}
+                                className="inline-flex items-center gap-1 rounded px-2 py-1 text-[12.5px] text-tinta-3 opacity-0 transition-opacity hover:bg-gagal-lembut hover:text-gagal focus:opacity-100 group-hover:opacity-100">
+                                {hapusSibuk.has(s.id) && <Spinner className="h-3.5 w-3.5" />}
+                                {hapusSibuk.has(s.id) ? "Menghapus…" : s.id.startsWith("draft:") ? "Buang draf" : "Hapus"}
                               </button>
                             )}
                           </td>
@@ -383,9 +474,9 @@ export function TabelSkenario({
 
           {bolehKelolaSkenario && (
             <div className="flex flex-wrap items-center gap-4">
-              <button type="button" onClick={() => void tambah(modul[0]?.id ?? null)} disabled={sibuk}
-                className="sentuh rounded-md border border-garis bg-kartu px-3.5 text-[14px] font-medium text-tinta-2 hover:border-garis-kuat disabled:opacity-60">
-                {sibuk ? "Menambah…" : "Tambah skenario"}
+              <button type="button" onClick={() => tambah(modul[0]?.id ?? null)}
+                className="sentuh inline-flex items-center justify-center gap-2 rounded-md border border-garis bg-kartu px-3.5 text-[14px] font-medium text-tinta-2 hover:border-garis-kuat">
+                {data.some((x) => x.id.startsWith("draft:")) ? "Lanjutkan draf" : "Tambah skenario"}
               </button>
               <p className="text-[13px] text-tinta-3">
                 {data.length} skenario {fase} · klik sel untuk mengubah, klik judul untuk membuka detail
@@ -403,7 +494,16 @@ export function TabelSkenario({
           projectId={projectId}
           bolehUbah={bolehUbah}
           bolehKelolaSkenario={bolehKelolaSkenario}
-          onTutup={() => setBukaPanel(null)}
+          isDraft={terpilih.id.startsWith("draft:")}
+          onDataMutasi={onDataMutasi}
+          onDraftChange={onDraftChange}
+          onTutup={() => {
+            if (terpilih.id.startsWith("draft:")) {
+              perbaruiData((baris) => baris.filter((x) => x.id !== terpilih.id));
+              onDraftChange?.(false);
+            }
+            setBukaPanel(null);
+          }}
           onUbah={(tambalan) => {
             /*
              * Perubahan dari panel memakai jalur simpan yang SAMA dengan tabel,
@@ -424,6 +524,36 @@ export function TabelSkenario({
           }}
         />
       )}
+      {konfirmasiHapus && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <button type="button" aria-label="Tutup konfirmasi hapus" disabled={hapusSibuk.has(konfirmasiHapus.id)}
+            onClick={() => { setKonfirmasiHapus(null); setHapusGalat(null); }}
+            className="absolute inset-0 bg-tinta/45 disabled:cursor-wait" />
+          <section ref={hapusDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="judul-konfirmasi-hapus-skenario"
+            className="relative z-10 w-full max-w-lg rounded-xl border border-garis bg-kartu p-5 shadow-xl sm:p-6">
+            <h2 id="judul-konfirmasi-hapus-skenario" className="text-lg font-bold text-tinta">
+              {konfirmasiHapus.id.startsWith("draft:") ? "Buang draf skenario?" : "Hapus skenario?"}
+            </h2>
+            <p className="mt-2 text-[13.5px] leading-relaxed text-tinta-2">
+              {konfirmasiHapus.id.startsWith("draft:")
+                ? "Draf ini belum disimpan ke server. Buang draf dari layar ini?"
+                : <>Skenario <strong>{konfirmasiHapus.kode} — {konfirmasiHapus.judul}</strong> akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.</>}
+            </p>
+            {hapusGalat && <p role="alert" className="mt-3 rounded-md border border-gagal bg-gagal-lembut px-3 py-2 text-[13px] text-gagal">{hapusGalat}</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" autoFocus disabled={hapusSibuk.has(konfirmasiHapus.id)}
+                onClick={() => { setKonfirmasiHapus(null); setHapusGalat(null); }}
+                className="rounded-lg border border-garis-kuat px-3.5 py-2 text-[13px] font-medium text-tinta-2 hover:bg-kanvas disabled:opacity-60">Batal</button>
+              <button type="button" disabled={hapusSibuk.has(konfirmasiHapus.id)} aria-busy={hapusSibuk.has(konfirmasiHapus.id)}
+                onClick={() => void hapus(konfirmasiHapus)}
+                className="inline-flex items-center gap-2 rounded-lg bg-gagal px-3.5 py-2 text-[13px] font-semibold text-white disabled:cursor-wait disabled:opacity-60">
+                {hapusSibuk.has(konfirmasiHapus.id) && <Spinner className="h-4 w-4" />}
+                {hapusSibuk.has(konfirmasiHapus.id) ? "Menghapus…" : konfirmasiHapus.id.startsWith("draft:") ? "Buang draf" : "Hapus skenario"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </>
   );
 }
@@ -436,24 +566,30 @@ export function TabelSkenario({
  * dan dapat dicoba ulang bila server menolak penyimpanan.
  */
 function TeksSel({
-  nilai, bolehUbah, simpan, tebal, banyakBaris, wajib,
+  nilai, ariaLabel, bolehUbah, simpan, tebal, banyakBaris, wajib, disabled = false,
 }: {
-  nilai: string; bolehUbah: boolean; simpan: (v: string) => Promise<boolean>;
-  tebal?: boolean; banyakBaris?: boolean; wajib?: boolean;
+  nilai: string; ariaLabel: string; bolehUbah: boolean; simpan: (v: string) => Promise<boolean>;
+  tebal?: boolean; banyakBaris?: boolean; wajib?: boolean; disabled?: boolean;
 }) {
   const [buka, setBuka] = useState(false);
   const [draf, setDraf] = useState(nilai);
   const [sibuk, setSibuk] = useState(false);
   const kunciSimpan = useRef(false);
   const batalRef = useRef(false);
+  const pemicuRef = useRef<HTMLButtonElement>(null);
+
+  function tutupDanKembalikanFokus() {
+    setBuka(false);
+    requestAnimationFrame(() => pemicuRef.current?.focus());
+  }
 
   async function simpanDraf() {
     if (kunciSimpan.current) return;
-    if (draf === nilai) { setBuka(false); return; }
+    if (draf === nilai) { tutupDanKembalikanFokus(); return; }
     kunciSimpan.current = true;
     setSibuk(true);
     try {
-      if (await simpan(draf)) setBuka(false);
+      if (await simpan(draf)) tutupDanKembalikanFokus();
     } finally {
       kunciSimpan.current = false;
       setSibuk(false);
@@ -473,8 +609,11 @@ function TeksSel({
   if (!buka) {
     return (
       <button type="button"
+        ref={pemicuRef}
+        disabled={disabled}
         onClick={() => { batalRef.current = false; setDraf(nilai); setBuka(true); }}
-        className={cn("block w-full whitespace-pre-wrap break-words rounded px-1 py-0.5 text-left hover:bg-kanvas",
+        aria-label={`Edit ${ariaLabel}`}
+        className={cn("block w-full whitespace-pre-wrap break-words rounded px-1 py-0.5 text-left hover:bg-kanvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aksi",
           tebal ? "font-medium text-tinta" : "text-tinta-2",
           !nilai && "text-tinta-3",
           wajib && !nilai && "ring-1 ring-gagal/40",
@@ -491,21 +630,21 @@ function TeksSel({
       if (tujuan instanceof Node && e.currentTarget.contains(tujuan)) return;
       if (!batalRef.current && draf !== nilai) void simpanDraf();
     }}>
-      <Tag autoFocus value={draf} rows={banyakBaris ? 3 : undefined} maxLength={20000} disabled={sibuk}
+      <Tag autoFocus aria-label={ariaLabel} value={draf} rows={banyakBaris ? 3 : undefined} maxLength={20000} disabled={sibuk || disabled}
         onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setDraf(e.target.value)}
         onKeyDown={(e: React.KeyboardEvent) => {
-          if (e.key === "Escape") { e.preventDefault(); batalRef.current = true; setDraf(nilai); setBuka(false); }
+          if (e.key === "Escape") { e.preventDefault(); batalRef.current = true; setDraf(nilai); tutupDanKembalikanFokus(); }
           if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void simpanDraf(); }
         }}
         className={cn("w-full rounded border border-aksi bg-kartu px-1.5 py-1 text-[13.5px] outline-none",
           tebal ? "font-medium text-tinta" : "text-tinta-2")}
       />
       <div className="mt-1 flex items-center gap-1.5">
-        <button type="button" onClick={() => void simpanDraf()} disabled={sibuk || draf === nilai}
-          className="rounded bg-aksi px-2 py-1 text-[11.5px] font-semibold text-white disabled:opacity-50">
-          {sibuk ? "Menyimpan…" : "Simpan"}
+        <button type="button" onClick={() => void simpanDraf()} disabled={sibuk || disabled || draf === nilai} aria-busy={sibuk}
+          className="inline-flex items-center gap-1 rounded bg-aksi px-2 py-1 text-[11.5px] font-semibold text-white disabled:opacity-50">
+          {sibuk && <Spinner className="h-3 w-3" />}{sibuk ? "Menyimpan…" : "Simpan"}
         </button>
-        <button type="button" onClick={() => { batalRef.current = true; setDraf(nilai); setBuka(false); }} disabled={sibuk}
+        <button type="button" onClick={() => { batalRef.current = true; setDraf(nilai); tutupDanKembalikanFokus(); }} disabled={sibuk || disabled}
           className="rounded border border-garis px-2 py-1 text-[11.5px] text-tinta-2 disabled:opacity-50">
           Batal
         </button>

@@ -5,6 +5,7 @@ import { cn, STATUS_UJI, labelStatus } from "@/lib/format";
 import { capWaktuID } from "@/lib/waktu";
 import { BuktiSkenario } from "./bukti-skenario";
 import type { Skenario } from "./tabel-skenario";
+import { Spinner } from "@/components/indikator-proses";
 
 type Riwayat = {
   id: number; aksi: string; kolom: string | null;
@@ -54,19 +55,24 @@ function bentukDraf(s: Skenario): DrafSkenario {
  * menutup penuh — dan itu memang yang diinginkan di layar kecil.
  */
 export function PanelSkenario({
-  skenario, projectId, bolehUbah, bolehKelolaSkenario, onTutup, onUbah,
+  skenario, projectId, bolehUbah, bolehKelolaSkenario, onTutup, onUbah, isDraft, onDataMutasi, onDraftChange,
 }: {
   skenario: Skenario; projectId: string; bolehUbah: boolean; bolehKelolaSkenario: boolean;
   onTutup: () => void; onUbah: (tambalan: Partial<Skenario>) => Promise<boolean>;
+  isDraft: boolean; onDataMutasi?: () => void; onDraftChange?: (active: boolean) => void;
 }) {
   const [riwayat, setRiwayat] = useState<Riwayat[]>(() => CACHE_RIWAYAT.get(skenario.id)?.riwayat ?? []);
   const [riwayatMuat, setRiwayatMuat] = useState(() => !CACHE_RIWAYAT.has(skenario.id));
   const [riwayatGalat, setRiwayatGalat] = useState<string | null>(null);
+  const [riwayatRetry, setRiwayatRetry] = useState(0);
   const versiDrafSebelumnya = useRef(skenario);
   const [draf, setDraf] = useState<DrafSkenario>(() => bentukDraf(skenario));
   const [editorRevision, setEditorRevision] = useState(0);
   const [simpanSibuk, setSimpanSibuk] = useState(false);
   const [simpanInfo, setSimpanInfo] = useState<{ jenis: "galat" | "info"; teks: string } | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const judulPanelRef = useRef<HTMLHeadingElement>(null);
+  const pemicuFokusRef = useRef<HTMLElement | null>(null);
   const kotor = {
     judul: draf.judul !== skenario.judul,
     status: draf.status !== skenario.status,
@@ -100,11 +106,16 @@ export function PanelSkenario({
 
   function ubahDraf<K extends keyof DrafSkenario>(kunci: K, nilai: DrafSkenario[K]) {
     setDraf((x) => ({ ...x, [kunci]: nilai }));
+    onDraftChange?.(true);
     setSimpanInfo(null);
   }
 
   async function simpanSemua() {
     if (!adaDrafKotor || simpanSibuk) return;
+    if (isDraft && !draf.judul.trim()) {
+      setSimpanInfo({ jenis: "galat", teks: "Judul wajib diisi untuk membuat skenario." });
+      return;
+    }
     const tambalan: Partial<Skenario> = {};
     if (kotor.judul) tambalan.judul = draf.judul;
     if (kotor.status) tambalan.status = draf.status;
@@ -120,6 +131,7 @@ export function PanelSkenario({
       if (berhasil) {
         setSimpanInfo({ jenis: "info", teks: "Semua perubahan berhasil disimpan." });
         setEditorRevision((x) => x + 1);
+        onDraftChange?.(false);
       } else {
         setSimpanInfo({ jenis: "galat", teks: "Penyimpanan gagal. Draf tetap tersedia; periksa pesan pada halaman." });
       }
@@ -134,18 +146,41 @@ export function PanelSkenario({
     setDraf(bentukDraf(skenario));
     setSimpanInfo(null);
     setEditorRevision((x) => x + 1);
+    onDraftChange?.(false);
   }
 
   const tutupAman = () => {
     if (adaDrafKotor && !window.confirm("Ada perubahan yang belum disimpan. Tutup panel dan buang semua draf?")) return;
+    onDraftChange?.(false);
     onTutup();
   };
 
-  // Escape menutup panel. KENAPA TIDAK DIBLOKIR SAAT FOKUS DI ISIAN:
-  // setelah mengetik, fokus MEMANG ada di isian — kalau diblokir, Escape mati
-  // tepat saat paling dibutuhkan.
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") tutupAman(); };
+    const aktif = document.activeElement;
+    if (aktif instanceof HTMLElement && aktif !== document.body) pemicuFokusRef.current = aktif;
+    if (!isDraft) judulPanelRef.current?.focus();
+    return () => { requestAnimationFrame(() => pemicuFokusRef.current?.focus()); };
+  }, [skenario.id, isDraft]);
+
+  // Trap Tab di panel modal; Escape menutupnya, dengan konfirmasi bila ada draf.
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { tutupAman(); return; }
+      if (e.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const fokus = Array.from(panel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter((el) => el.offsetParent !== null);
+      if (!fokus.length) { e.preventDefault(); panel.focus(); return; }
+      const pertama = fokus[0];
+      const terakhir = fokus[fokus.length - 1];
+      if (e.shiftKey && (document.activeElement === pertama || document.activeElement === panel)) {
+        e.preventDefault(); terakhir.focus();
+      } else if (!e.shiftKey && (document.activeElement === terakhir || document.activeElement === panel)) {
+        e.preventDefault(); pertama.focus();
+      }
+    };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, [tutupAman]);
@@ -168,11 +203,18 @@ export function PanelSkenario({
 
   useEffect(() => {
     let batal = false;
+    if (isDraft) {
+      setRiwayat([]);
+      setRiwayatMuat(false);
+      setRiwayatGalat(null);
+      return () => { batal = true; };
+    }
     const cache = CACHE_RIWAYAT.get(skenario.id);
     if (cache) setRiwayat(cache.riwayat);
-    setRiwayatMuat(!cache);
+    const cacheCocok = cache?.versi === skenario.versi;
+    setRiwayatMuat(!cacheCocok || riwayatRetry > 0);
     setRiwayatGalat(null);
-    if (cache?.versi === skenario.versi) return () => { batal = true; };
+    if (cacheCocok && riwayatRetry === 0) return () => { batal = true; };
     void (async () => {
       try {
         const r = await fetch(`/api/v1/riwayat?scenarioId=${skenario.id}`);
@@ -189,14 +231,14 @@ export function PanelSkenario({
       }
     })();
     return () => { batal = true; };
-  }, [skenario.id, skenario.versi]);
+  }, [skenario.id, skenario.versi, isDraft, riwayatRetry]);
 
   return (
     <>
       <button type="button" aria-label="Tutup panel" onClick={tutupAman}
         className="fixed inset-0 z-30 bg-tinta/10" />
 
-      <aside role="dialog" aria-label={`Detail ${skenario.kode}`}
+      <aside ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="panel-skenario-title"
         className={cn(
           "fixed right-0 top-0 z-40 h-screen w-full overflow-y-auto border-l border-garis bg-kartu",
           "sm:w-[42%] sm:max-w-[620px]",
@@ -205,12 +247,14 @@ export function PanelSkenario({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="tabular text-[12.5px] font-medium text-tinta-3">
-                {skenario.kode} · Tahap {skenario.fase}
+                {isDraft ? "Draf baru" : skenario.kode} · Tahap {skenario.fase}
               </p>
-              <h2 className="mt-0.5 text-[18px] font-bold leading-snug tracking-tight text-tinta">
-                {draf.judul}
+              <h2 ref={judulPanelRef} id="panel-skenario-title" tabIndex={-1} className="mt-0.5 text-[18px] font-bold leading-snug tracking-tight text-tinta">
+                {draf.judul || (isDraft ? "Skenario baru" : "Tanpa judul")}
               </h2>
-              <p className="mt-1 text-[12px] text-tinta-3">Ubah beberapa bagian, lalu simpan sekaligus.</p>
+              <p className="mt-1 text-[12px] text-tinta-3">
+                {isDraft ? "Tulis judul untuk membuat skenario. Belum ada data yang disimpan." : "Ubah beberapa bagian, lalu simpan sekaligus."}
+              </p>
               {adaDrafKotor && <p role="status" className="mt-1 text-[12px] font-medium text-tertunda">Ada teks yang belum tersimpan</p>}
             </div>
             <button type="button" onClick={tutupAman} aria-label="Tutup"
@@ -222,11 +266,20 @@ export function PanelSkenario({
 
         <div className="space-y-5 px-6 py-5">
           <Bagian judul="Judul skenario">
-            <Teks nilai={skenario.judul} draf={draf.judul} kosong="Judul belum diisi"
+            <Teks nilai={skenario.judul} draf={draf.judul}
+              kosong={isDraft ? "Contoh: Verifikasi hak akses pengguna" : "Judul belum diisi"}
+              ariaLabel="Judul skenario"
               bolehUbah={bolehKelolaSkenario} onChange={(v) => ubahDraf("judul", v)} maksimal={200}
-              revision={editorRevision} disabled={simpanSibuk} onSimpanSemua={() => void simpanSemua()} />
+              revision={editorRevision} disabled={simpanSibuk} onSimpanSemua={() => void simpanSemua()}
+              bukaAwal={isDraft} />
           </Bagian>
 
+          {isDraft ? (
+            <p className="rounded-md bg-kanvas px-3 py-2 text-[13px] text-tinta-2">
+              Judul wajib diisi. Draf ini tetap di perangkat Anda sampai Anda memilih <strong>Buat skenario</strong>.
+            </p>
+          ) : (
+          <>
           {/* Sifat: label kiri kecil dan redup, nilai kanan lebih terang.
               Susunan ini yang membuat panel terbaca cepat — mata menyapu kolom
               label, bukan membaca kalimat. */}
@@ -256,24 +309,28 @@ export function PanelSkenario({
 
           <Bagian judul="Langkah pengujian">
             <Teks nilai={skenario.langkah_pengujian} draf={draf.langkah_pengujian} kosong="Belum diisi"
+              ariaLabel="Langkah pengujian"
               bolehUbah={bolehKelolaSkenario} onChange={(v) => ubahDraf("langkah_pengujian", v)}
               revision={editorRevision} disabled={simpanSibuk} onSimpanSemua={() => void simpanSemua()} />
           </Bagian>
 
           <Bagian judul="Hasil yang diharapkan">
             <Teks nilai={skenario.hasil_diharapkan} draf={draf.hasil_diharapkan} kosong="Belum diisi"
+              ariaLabel="Hasil yang diharapkan"
               bolehUbah={bolehKelolaSkenario} onChange={(v) => ubahDraf("hasil_diharapkan", v)}
               revision={editorRevision} disabled={simpanSibuk} onSimpanSemua={() => void simpanSemua()} />
           </Bagian>
 
           <Bagian judul="Hasil aktual / temuan">
             <Teks nilai={skenario.hasil_aktual} draf={draf.hasil_aktual} kosong="Catat apa yang benar-benar terjadi saat pengujian"
+              ariaLabel="Hasil aktual atau temuan"
               bolehUbah={bolehUbah} onChange={(v) => ubahDraf("hasil_aktual", v)}
               revision={editorRevision} disabled={simpanSibuk} onSimpanSemua={() => void simpanSemua()} />
           </Bagian>
 
           <Bagian judul="Catatan tindak lanjut">
             <Teks nilai={skenario.catatan_tindak_lanjut} draf={draf.catatan_tindak_lanjut}
+              ariaLabel="Catatan tindak lanjut"
               kosong={draf.status === "FAIL" || draf.status === "BLOCKED"
                 ? "WAJIB diisi untuk status Gagal atau Tertunda" : "Belum ada catatan"}
               bolehUbah={bolehUbah} onChange={(v) => ubahDraf("catatan_tindak_lanjut", v)}
@@ -282,7 +339,8 @@ export function PanelSkenario({
           </Bagian>
 
           <div className="border-t border-garis pt-4">
-            <BuktiSkenario projectId={projectId} scenarioId={skenario.id} bolehUbah={bolehUbah} bolehHapus={bolehKelolaSkenario} />
+            <BuktiSkenario projectId={projectId} scenarioId={skenario.id} bolehUbah={bolehUbah} bolehHapus={bolehKelolaSkenario}
+              onDataMutasi={onDataMutasi} />
           </div>
 
           {/* Riwayat perubahan: NFR-1 mewajibkan jejak, dan jejak yang tidak
@@ -292,9 +350,18 @@ export function PanelSkenario({
               Riwayat perubahan
             </p>
             {riwayatMuat ? (
-              <p className="text-[13px] text-tinta-3">Memuat riwayat…</p>
+              <p role="status" aria-live="polite" className="inline-flex items-center gap-2 text-[13px] text-tinta-3">
+                <Spinner className="h-3.5 w-3.5" />Memuat riwayat…
+              </p>
             ) : riwayatGalat ? (
-              <p role="status" className="text-[13px] text-gagal">{riwayatGalat}</p>
+              <div>
+                <p role="alert" className="text-[13px] text-gagal">{riwayatGalat}</p>
+                <button type="button" onClick={() => { setRiwayatMuat(true); setRiwayatRetry((x) => x + 1); }}
+                  disabled={riwayatMuat} aria-busy={riwayatMuat}
+                  className="sentuh mt-1 inline-flex items-center gap-2 rounded border border-garis px-2.5 text-[12px] font-medium text-tinta-2 disabled:opacity-50">
+                  {riwayatMuat && <Spinner className="h-3 w-3" />}Coba lagi
+                </button>
+              </div>
             ) : riwayat.length === 0 ? (
               <p className="text-[13px] text-tinta-3">Belum ada perubahan tercatat</p>
             ) : (
@@ -324,6 +391,8 @@ export function PanelSkenario({
               </ul>
             )}
           </div>
+          </>
+          )}
           {(bolehUbah || bolehKelolaSkenario) && (
             <div className="sticky bottom-0 -mx-6 border-t border-garis bg-kartu/95 px-6 py-3 backdrop-blur">
               {simpanInfo && (
@@ -336,9 +405,11 @@ export function PanelSkenario({
                   className="rounded-md border border-garis px-3 py-2 text-[13px] text-tinta-2 disabled:opacity-50">
                   Batalkan
                 </button>
-                <button type="button" onClick={() => void simpanSemua()} disabled={!adaDrafKotor || simpanSibuk}
-                  className="rounded-md bg-aksi px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-50">
-                  {simpanSibuk ? "Menyimpan semua…" : "Simpan semua perubahan"}
+                <button type="button" onClick={() => void simpanSemua()}
+                  disabled={!adaDrafKotor || simpanSibuk || (isDraft && !draf.judul.trim())} aria-busy={simpanSibuk}
+                  className="inline-flex items-center gap-2 rounded-md bg-aksi px-4 py-2 text-[13px] font-semibold text-white disabled:cursor-wait disabled:opacity-50">
+                  {simpanSibuk && <Spinner className="h-4 w-4" />}
+                  {simpanSibuk ? (isDraft ? "Membuat skenario…" : "Menyimpan semua…") : (isDraft ? "Buat skenario" : "Simpan semua perubahan")}
                 </button>
               </div>
             </div>
@@ -368,16 +439,23 @@ function Bagian({ judul, children }: { judul: string; children: React.ReactNode 
 }
 
 function Teks({
-  nilai, draf, kosong, bolehUbah, onChange, sorot, maksimal = 20000,
-  revision, disabled, onSimpanSemua,
+  nilai, draf, kosong, bolehUbah, onChange, sorot, maksimal = 20000, ariaLabel,
+  revision, disabled, onSimpanSemua, bukaAwal = false,
 }: {
   nilai: string | null; draf: string; kosong: string; bolehUbah: boolean;
   onChange: (v: string) => void; sorot?: boolean; maksimal?: number;
   revision: number; disabled: boolean; onSimpanSemua: () => void;
+  ariaLabel: string; bukaAwal?: boolean;
 }) {
-  const [buka, setBuka] = useState(false);
+  const [buka, setBuka] = useState(bukaAwal);
+  const revisionSebelumnya = useRef(revision);
   const berubah = draf !== (nilai ?? "");
-  useEffect(() => { setBuka(false); }, [revision]);
+  useEffect(() => {
+    if (revisionSebelumnya.current !== revision) {
+      revisionSebelumnya.current = revision;
+      setBuka(false);
+    }
+  }, [revision]);
 
   if (!bolehUbah) {
     return (
@@ -408,6 +486,7 @@ function Teks({
       setBuka(false);
     }}>
       <textarea autoFocus rows={4} value={draf} maxLength={maksimal} disabled={disabled}
+        aria-label={ariaLabel} placeholder={kosong}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onChange(nilai ?? ""); setBuka(false); }

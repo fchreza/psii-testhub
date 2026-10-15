@@ -4,7 +4,8 @@ import { klienMentah } from "@/db";
 import { Nav } from "@/components/nav";
 import { wajibMasuk, bolehAksesProyek, bolehKelolaProyek, bolehUbahEksekusi } from "@/lib/gerbang";
 import { tanggalID } from "@/lib/waktu";
-import { TabelSkenario, type Skenario, type Modul, type Orang } from "@/components/tabel-skenario";
+import type { Skenario, Modul, Orang } from "@/components/tabel-skenario";
+import { AreaSkenarioProyek } from "@/components/area-skenario-proyek";
 import { KelolaAksesProyek } from "@/components/kelola-akses-proyek";
 import { UbahTahapProyek } from "@/components/ubah-tahap-proyek";
 import { EditorMetadataProyek } from "@/components/editor-metadata-proyek";
@@ -28,25 +29,24 @@ export default async function HalamanProyek({
   const { id } = await params;
   const { fase: faseDiminta } = await searchParams;
 
-  const [p] = (await klienMentah.unsafe(`
-    SELECT p.*, u.nama AS pm_nama FROM th_projects p
-    LEFT JOIN th_users u ON u.id = p.pm_id
-    WHERE p.id = $1`, [id],
-  )) as unknown as (Record<string, unknown> & {
+  const [rowsProyek, bolehAkses] = await Promise.all([
+    klienMentah.unsafe(`
+      SELECT p.*, u.nama AS pm_nama FROM th_projects p
+      LEFT JOIN th_users u ON u.id = p.pm_id
+      WHERE p.id = $1`, [id],
+    ),
+    bolehAksesProyek(saya, id),
+  ]);
+  const [p] = rowsProyek as unknown as (Record<string, unknown> & {
     id: string; nama: string; pm_nama: string | null; tahap: string;
     aplikasi: string | null; modul: string | null; jenis_pengujian: string;
   })[];
 
-  if (!p) notFound();
-
   /*
-   * KENAPA DI SINI, BUKAN DI MIDDLEWARE:
-   * Middleware tidak bisa membaca database, jadi ia tidak tahu siapa anggota
-   * proyek mana. Pemeriksaan yang menentukan harus di tempat yang punya
-   * koneksi — dan harus mengembalikan 404, bukan 403, supaya keberadaan
-   * proyek yang bukan miliknya tidak ikut terbocor.
+   * Pemeriksaan tetap server-side dan data proyek tidak digunakan sebelum izin
+   * lolos. Query proyek dan membership berjalan paralel agar tidak menambah RTT.
    */
-  if (!(await bolehAksesProyek(saya, id))) notFound();
+  if (!p || !bolehAkses) notFound();
 
   const kelolaProyek = bolehKelolaProyek(saya.peran);
   const bolehUbah = bolehUbahEksekusi(saya.peran);
@@ -57,12 +57,12 @@ export default async function HalamanProyek({
   const fase = faseDimintaSah ? faseDiminta as FasePengujian : faseTersedia[0];
   if (faseDiminta && !faseDimintaSah) redirect(`/proyek/${id}?fase=${fase}`);
 
-  const modul = (await klienMentah.unsafe(
+  const modulQuery = klienMentah.unsafe(
     `SELECT id, kode, nama, urutan FROM th_modules WHERE project_id = $1 ORDER BY urutan, kode`,
     [id],
-  )) as unknown as Modul[];
+  );
 
-  const orang = (await (kelolaProyek
+  const orangQuery = kelolaProyek
     ? klienMentah.unsafe(`SELECT id, nama, peran FROM th_users
                          WHERE aktif = true AND peran IN ('INTERNAL_KEMENKEU','EKSTERNAL_KEMENKEU')
                          ORDER BY nama`)
@@ -72,30 +72,48 @@ export default async function HalamanProyek({
          u.id IN (SELECT user_id FROM th_project_members WHERE project_id = $1)
          OR u.id IN (SELECT penguji_id FROM th_scenarios WHERE project_id = $1 AND penguji_id IS NOT NULL)
        ) ORDER BY u.nama`, [id],
-    ))) as unknown as Orang[];
+    );
 
-  const calon = kelolaProyek ? (await klienMentah.unsafe(
+  const calonQuery = kelolaProyek ? klienMentah.unsafe(
     `SELECT id, nama, email, peran FROM th_users
      WHERE aktif = true AND peran IN ('INTERNAL_KEMENKEU','EKSTERNAL_KEMENKEU')
      ORDER BY nama`,
-  )) as unknown as { id: string; nama: string; email: string; peran: string }[] : [];
-  const anggota = kelolaProyek ? (await klienMentah.unsafe(
+  ) : Promise.resolve([]);
+  const anggotaQuery = kelolaProyek ? klienMentah.unsafe(
     `SELECT u.id, u.nama, u.email, u.peran, m.ditambahkan_pada
      FROM th_project_members m JOIN th_users u ON u.id = m.user_id
      WHERE m.project_id = $1 ORDER BY u.nama`, [id],
-  )) as unknown as { id: string; nama: string; email: string; peran: string; ditambahkan_pada: string }[] : [];
+  ) : Promise.resolve([]);
 
-  const skenario = (await klienMentah.unsafe(`
+  const skenarioQuery = klienMentah.unsafe(`
     SELECT s.id, s.kode, s.fase, s.judul, s.langkah_pengujian, s.hasil_diharapkan, s.hasil_aktual,
            s.status, s.catatan_tindak_lanjut, s.siap_retest, s.module_id, s.urutan,
            s.penguji_id, u.nama AS penguji_nama,
-           (SELECT count(*) FROM th_evidence e WHERE e.scenario_id = s.id)::int AS jumlah_bukti,
+           COALESCE(e.jumlah, 0)::int AS jumlah_bukti,
            s.diubah_pada, s.xmin::text AS versi
     FROM th_scenarios s
     LEFT JOIN th_users u ON u.id = s.penguji_id
+    LEFT JOIN (
+      SELECT e.scenario_id, count(*)::int AS jumlah
+      FROM th_evidence e
+      JOIN th_scenarios es ON es.id = e.scenario_id
+      WHERE es.project_id = $1 AND es.fase = $2
+      GROUP BY e.scenario_id
+    ) e ON e.scenario_id = s.id
     WHERE s.project_id = $1 AND s.fase = $2
     ORDER BY s.urutan, s.kode
-  `, [id, fase])) as unknown as Skenario[];
+  `, [id, fase]);
+
+  // Jalankan data pendukung secara paralel setelah otorisasi lolos; sebelumnya
+  // lima round trip database berurutan menahan halaman meski query independen.
+  const [modulRows, orangRows, calonRows, anggotaRows, skenarioRows] = await Promise.all([
+    modulQuery, orangQuery, calonQuery, anggotaQuery, skenarioQuery,
+  ]);
+  const modul = modulRows as unknown as Modul[];
+  const orang = orangRows as unknown as Orang[];
+  const calon = calonRows as unknown as { id: string; nama: string; email: string; peran: string }[];
+  const anggota = anggotaRows as unknown as { id: string; nama: string; email: string; peran: string; ditambahkan_pada: string }[];
+  const skenario = skenarioRows as unknown as Skenario[];
 
   const hitung = {
     total: skenario.length,
@@ -104,13 +122,10 @@ export default async function HalamanProyek({
     tertunda: skenario.filter((s) => s.status === "BLOCKED").length,
     belum: skenario.filter((s) => s.status === "PENDING").length,
   };
-  // Tingkat kelulusan: pembagi SEMUA skenario (keputusan pemilik produk).
-  const persen = hitung.total > 0 ? Math.round((hitung.lulus / hitung.total) * 100) : 0;
-
   return (
     <>
       <Nav aktif="proyek" peran={saya.peran} />
-      <main className="mx-auto max-w-[1500px] px-6 py-8">
+      <main id="konten-utama" tabIndex={-1} className="mx-auto max-w-[1500px] px-6 py-8">
         <p className="mb-3 text-[13px] text-tinta-3">
           <Link href="/proyek" className="hover:text-aksi">Proyek</Link> / {p.id}
         </p>
@@ -186,45 +201,13 @@ export default async function HalamanProyek({
           <KelolaAksesProyek projectId={id} calon={calon} anggotaAwal={anggota} faseTersedia={faseTersedia} />
         )}
 
-        {/* Ringkasan angka. Ini yang paling sering ditanya pimpinan, jadi
-            diletakkan sebelum tabel, bukan setelahnya. */}
-        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-6">
-          {[
-            ["Total", hitung.total, "text-tinta"],
-            ["Lulus", hitung.lulus, "text-lulus"],
-            ["Gagal", hitung.gagal, "text-gagal"],
-            ["Tertunda", hitung.tertunda, "text-tertunda"],
-            ["Belum diuji", hitung.belum, "text-tinta-3"],
-            ["Kelulusan", `${persen}%`, "text-tinta"],
-          ].map(([label, nilai, warna]) => (
-            <div key={String(label)} className="rounded-lg border border-garis bg-kartu px-3.5 py-3">
-              <p className="text-[12px] font-medium uppercase tracking-wide text-tinta-3">{label}</p>
-              <p className={`tabular mt-0.5 text-[22px] font-bold leading-none ${warna}`}>{nilai}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="mb-4 flex flex-wrap items-center gap-1.5 border-b border-garis pb-3">
-          {faseTersedia.map((f) => {
-            const jumlah = f === fase ? skenario.length : null;
-            return (
-              <Link key={f} href={`/proyek/${id}?fase=${f}`}
-                aria-current={f === fase ? "page" : undefined}
-                className={f === fase
-                  ? "rounded-md bg-aksi px-3 py-2 text-[13.5px] font-medium text-white"
-                  : "rounded-md px-3 py-2 text-[13.5px] text-tinta-2 hover:bg-kartu"}>
-                Tahap {f}
-                {jumlah !== null && <span className="ml-1.5 tabular opacity-80">{jumlah}</span>}
-              </Link>
-            );
-          })}
-        </div>
-
-        <TabelSkenario
+        <AreaSkenarioProyek
           key={`${id}:${fase}`}
           projectId={id}
           fase={fase}
+          faseTersedia={faseTersedia}
           skenarioAwal={skenario}
+          statistikAwal={hitung}
           modul={modul}
           orang={orang}
           sayaId={saya.id}

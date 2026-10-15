@@ -36,32 +36,46 @@ export default async function HalamanProyek() {
   const lihatSemua = internal(saya.peran);
   const dapatMengelola = bolehKelolaProyek(saya.peran);
 
-  const daftar = (await klienMentah.unsafe(`
+  const daftarQuery = klienMentah.unsafe(`
+    WITH proyek_terlihat AS (
+      SELECT p.id, p.nama, p.aplikasi, p.modul, p.modul_aplikasi, p.jenis_pengujian,
+             p.tahap, p.lingkungan, p.tanggal_mulai, p.target_selesai, p.pm_id, p.dibuat_pada
+      FROM th_projects p
+      WHERE ${lihatSemua ? "true" : `p.id IN (SELECT project_id FROM th_project_members WHERE user_id = '${saya.id}'::uuid)`}
+    ), statistik AS (
+      SELECT s.project_id, count(*)::int AS total,
+             count(*) FILTER (WHERE s.status = 'PASS')::int AS lulus,
+             count(*) FILTER (WHERE s.status = 'FAIL')::int AS gagal,
+             count(*) FILTER (WHERE s.status = 'BLOCKED')::int AS tertunda,
+             count(*) FILTER (WHERE s.status = 'PENDING')::int AS belum
+      FROM th_scenarios s
+      JOIN proyek_terlihat p ON p.id = s.project_id
+      GROUP BY s.project_id
+    )
     SELECT p.id, p.nama, p.aplikasi, p.modul, p.modul_aplikasi, p.jenis_pengujian,
-           p.tahap, p.lingkungan,
-           p.tanggal_mulai, p.target_selesai,
+           p.tahap, p.lingkungan, p.tanggal_mulai, p.target_selesai,
            u.nama AS pm_nama,
-           (SELECT count(*) FROM th_scenarios s WHERE s.project_id = p.id)::int AS total,
-           (SELECT count(*) FROM th_scenarios s WHERE s.project_id = p.id AND s.status = 'PASS')::int AS lulus,
-           (SELECT count(*) FROM th_scenarios s WHERE s.project_id = p.id AND s.status = 'FAIL')::int AS gagal,
-           (SELECT count(*) FROM th_scenarios s WHERE s.project_id = p.id AND s.status = 'BLOCKED')::int AS tertunda,
-           (SELECT count(*) FROM th_scenarios s WHERE s.project_id = p.id AND s.status = 'PENDING')::int AS belum
-    FROM th_projects p
+           COALESCE(s.total, 0)::int AS total,
+           COALESCE(s.lulus, 0)::int AS lulus,
+           COALESCE(s.gagal, 0)::int AS gagal,
+           COALESCE(s.tertunda, 0)::int AS tertunda,
+           COALESCE(s.belum, 0)::int AS belum
+    FROM proyek_terlihat p
     LEFT JOIN th_users u ON u.id = p.pm_id
-    WHERE ${lihatSemua ? "true" : `p.id IN (SELECT project_id FROM th_project_members WHERE user_id = '${saya.id}'::uuid)`}
+    LEFT JOIN statistik s ON s.project_id = p.id
     ORDER BY p.dibuat_pada DESC
-  `)) as unknown as Baris[];
-
-  const calonPIC = dapatMengelola
-    ? (await klienMentah.unsafe(
-      `SELECT id::text AS id, nama FROM th_users WHERE aktif = true ORDER BY nama`,
-    )) as unknown as { id: string; nama: string }[]
-    : [];
+  `);
+  const calonQuery = dapatMengelola
+    ? klienMentah.unsafe(`SELECT id::text AS id, nama FROM th_users WHERE aktif = true ORDER BY nama`)
+    : Promise.resolve([]);
+  const [daftarRows, calonRows] = await Promise.all([daftarQuery, calonQuery]);
+  const daftar = daftarRows as unknown as Baris[];
+  const calonPIC = calonRows as unknown as { id: string; nama: string }[];
 
   return (
     <>
       <Nav aktif="proyek" peran={saya.peran} />
-      <main className="mx-auto max-w-[1200px] px-6 py-8">
+      <main id="konten-utama" tabIndex={-1} className="mx-auto max-w-[1200px] px-6 py-8">
         <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-tinta">Proyek pengujian</h1>

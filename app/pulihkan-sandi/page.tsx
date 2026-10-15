@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { Spinner } from "@/components/indikator-proses";
 
 function FormPemulihan() {
   const cari = useSearchParams();
@@ -44,7 +45,7 @@ function FormPemulihan() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-6 py-10">
+    <main id="konten-utama" tabIndex={-1} className="flex min-h-screen items-center justify-center px-6 py-10">
       <div className="w-full max-w-[27rem]">
         <section className="rounded-xl border border-garis bg-kartu p-7 shadow-sm">
           <p className="text-[12px] font-bold uppercase tracking-[0.12em] text-aksi">PSII TestHub</p>
@@ -72,9 +73,9 @@ function FormPemulihan() {
                     className="w-full rounded-md border border-garis-kuat px-3 py-2.5 text-[16px] text-tinta outline-none focus:border-aksi focus-visible:ring-2 focus-visible:ring-aksi" />
                 </div>
                 {galat && <p role="alert" className="rounded-md border border-gagal bg-gagal-lembut px-3 py-2 text-[13.5px] text-gagal">{galat}</p>}
-                <button type="submit" disabled={sibuk}
-                  className="w-full rounded-md bg-aksi px-4 py-2.5 text-[14px] font-semibold text-white hover:bg-aksi/90 disabled:opacity-60">
-                  {sibuk ? "Mengirim permintaan…" : "Kirim tautan pemulihan"}
+                <button type="submit" disabled={sibuk} aria-busy={sibuk}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-aksi px-4 py-2.5 text-[14px] font-semibold text-white hover:bg-aksi/90 disabled:cursor-wait disabled:opacity-60">
+                  {sibuk && <Spinner className="h-4 w-4" />}{sibuk ? "Mengirim permintaan…" : "Kirim tautan pemulihan"}
                 </button>
               </form>
             )
@@ -99,9 +100,9 @@ function FormPemulihan() {
                   className="w-full rounded-md border border-garis-kuat px-3 py-2.5 text-[16px] text-tinta outline-none focus:border-aksi focus-visible:ring-2 focus-visible:ring-aksi" />
               </div>
               {galat && <p role="alert" className="rounded-md border border-gagal bg-gagal-lembut px-3 py-2 text-[13.5px] text-gagal">{galat}</p>}
-              <button type="submit" disabled={sibuk}
-                className="w-full rounded-md bg-aksi px-4 py-2.5 text-[14px] font-semibold text-white hover:bg-aksi/90 disabled:opacity-60">
-                {sibuk ? "Menyimpan…" : "Simpan sandi baru"}
+              <button type="submit" disabled={sibuk} aria-busy={sibuk}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-aksi px-4 py-2.5 text-[14px] font-semibold text-white hover:bg-aksi/90 disabled:cursor-wait disabled:opacity-60">
+                {sibuk && <Spinner className="h-4 w-4" />}{sibuk ? "Menyimpan…" : "Simpan sandi baru"}
               </button>
             </form>
           )}
@@ -115,5 +116,11 @@ function FormPemulihan() {
 }
 
 export default function HalamanPemulihanSandi() {
-  return <Suspense fallback={<main className="min-h-screen" />}><FormPemulihan /></Suspense>;
+  return (
+    <Suspense fallback={<main id="konten-utama" tabIndex={-1} aria-busy="true" className="flex min-h-screen items-center justify-center px-6 py-10">
+      <p role="status" aria-live="polite" className="inline-flex items-center gap-2 text-[14px] text-tinta-2"><Spinner className="h-4 w-4" />Memuat formulir pemulihan…</p>
+    </main>}>
+      <FormPemulihan />
+    </Suspense>
+  );
 }
