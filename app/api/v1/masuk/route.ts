@@ -23,9 +23,9 @@ export async function POST(req: Request) {
 
   try {
     const [p] = (await klienMentah.unsafe(
-      `SELECT id, nama, peran, sandi_hash, aktif FROM th_users WHERE lower(email) = $1 LIMIT 1`,
+      `SELECT id, nama, peran, sandi_hash, sesi_versi, aktif FROM th_users WHERE lower(email) = $1 LIMIT 1`,
       [email],
-    )) as unknown as { id: string; nama: string; peran: string; sandi_hash: string | null; aktif: boolean }[];
+    )) as unknown as { id: string; nama: string; peran: string; sandi_hash: string | null; sesi_versi: number; aktif: boolean }[];
 
     /*
      * Pesan galat SENGAJA SAMA untuk "email tidak terdaftar", "sandi salah",
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     }
 
     bersihkanPercobaan(email);
-    await pasangCookie(p.id);
+    await pasangCookie(p.id, Number(p.sesi_versi));
     return NextResponse.json({ ok: true, nama: p.nama, peran: p.peran });
   } catch (e) {
     console.error("[masuk]", e instanceof Error ? e.message : e);

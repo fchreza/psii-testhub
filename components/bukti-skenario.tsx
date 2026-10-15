@@ -57,8 +57,8 @@ async function kecilkan(berkas: File): Promise<File> {
 }
 
 export function BuktiSkenario({
-  projectId, scenarioId, bolehUbah,
-}: { projectId: string; scenarioId: string; bolehUbah: boolean }) {
+  projectId, scenarioId, bolehUbah, bolehHapus,
+}: { projectId: string; scenarioId: string; bolehUbah: boolean; bolehHapus: boolean }) {
   const [daftar, setDaftar] = useState<Bukti[]>([]);
   const [muat, setMuat] = useState(true);
   const [sibuk, setSibuk] = useState<string | null>(null);
@@ -69,13 +69,13 @@ export function BuktiSkenario({
   const ambil = useCallback(async () => {
     const r = await fetch("/api/v1/bukti", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ aksi: "daftar", scenarioId }),
+      body: JSON.stringify({ aksi: "daftar", projectId, scenarioId }),
     });
     setMuat(false);
     if (!r.ok) return;
     const j = await r.json();
     setDaftar(j.bukti ?? []);
-  }, [scenarioId]);
+  }, [projectId, scenarioId]);
 
   useEffect(() => { void ambil(); }, [ambil]);
 
@@ -212,7 +212,7 @@ export function BuktiSkenario({
                     <img src={b.url} alt={b.nama_asli ?? "Bukti pengujian"}
                       loading="lazy" className="aspect-[4/3] w-full object-cover" />
                   </button>
-                  {bolehUbah && (
+                  {bolehHapus && (
                     <button type="button" onClick={() => void hapus(b)} disabled={sibuk === b.id}
                       aria-label={`Hapus ${b.nama_asli ?? "bukti"}`}
                       className="absolute right-1 top-1 rounded bg-kartu/95 px-1.5 py-0.5 text-[11px] font-medium text-gagal opacity-0 shadow-sm transition-opacity focus:opacity-100 group-hover:opacity-100">
@@ -234,7 +234,7 @@ export function BuktiSkenario({
                   <span className="tabular shrink-0 text-[12px] text-tinta-3">
                     {b.ukuran ? `${Math.round(b.ukuran / 1024)} KB` : ""}
                   </span>
-                  {bolehUbah && (
+                  {bolehHapus && (
                     <button type="button" onClick={() => void hapus(b)} disabled={sibuk === b.id}
                       aria-label={`Hapus ${b.nama_asli ?? "berkas"}`}
                       className="shrink-0 text-[12px] text-tinta-3 hover:text-gagal">

@@ -11,20 +11,24 @@ import { klienMentah } from "../db";
 
 const TABEL_DIHARAPKAN = [
   "th_users", "th_projects", "th_project_members", "th_modules",
-  "th_scenarios", "th_evidence", "th_audit_logs",
+  "th_scenarios", "th_evidence", "th_audit_logs", "th_password_resets",
 ];
 const INDEKS_DIHARAPKAN = [
   "th_users_email_unik", "th_scenarios_project_idx", "th_scenarios_penguji_idx",
   "th_scenarios_module_idx", "th_evidence_scenario_idx", "th_audit_project_idx",
-  "th_modules_project_idx", "th_members_user_idx",
+  "th_modules_project_idx", "th_members_user_idx", "th_password_resets_email_idx",
+  "th_password_resets_ip_idx", "th_password_resets_user_idx",
 ];
 
 async function main() {
-  const berkas = process.argv[2] ?? "db/migrasi-001.sql";
-  console.log(`  menjalankan ${berkas} ...`);
-  const ddl = readFileSync(berkas, "utf8");
-  await klienMentah.unsafe(ddl);
-  console.log("  DDL selesai tanpa galat");
+  const berkas = process.argv[2]
+    ? [process.argv[2]]
+    : ["db/migrasi-001.sql", "db/migrasi-002-peran.sql", "db/migrasi-003-pemulihan-sandi.sql"];
+  for (const nama of berkas) {
+    console.log(`  menjalankan ${nama} ...`);
+    await klienMentah.unsafe(readFileSync(nama, "utf8"));
+    console.log("  DDL selesai tanpa galat");
+  }
   console.log("");
 
   // ---- VERIFIKASI: baca katalog, jangan percaya pesan sukses ----
@@ -66,7 +70,20 @@ async function main() {
   console.log("");
   console.log("  === KOLOM th_scenarios ===");
   console.log(`    8 atribut PRD  : ${WAJIB.every((k) => adaKolom.includes(k)) ? "LENGKAP" : "ADA YANG HILANG"}`);
-  console.log(`    kolom cadangan : ${CADANGAN.every((k) => adaKolom.includes(k)) ? "SIAP (belum dipakai UI)" : "BELUM ADA"}`);
+  console.log(`    kolom tambahan : ${CADANGAN.every((k) => adaKolom.includes(k)) ? "LENGKAP (hasil_aktual digunakan UI)" : "BELUM LENGKAP"}`);
+
+  const resetKolom = (await klienMentah.unsafe(
+    `SELECT column_name FROM information_schema.columns WHERE table_name='th_password_resets'`,
+  )) as unknown as { column_name: string }[];
+  const adaResetKolom = resetKolom.map((k) => k.column_name);
+  const resetWajib = ["user_id", "email_hash", "ip_hash", "token_hash", "dibuat_pada", "kedaluwarsa_pada", "digunakan_pada"];
+  if (!adaKolom.includes("sesi_versi") || !resetWajib.every((k) => adaResetKolom.includes(k))) gagal++;
+  console.log(`    pemulihan sandi: ${adaKolom.includes("sesi_versi") && resetWajib.every((k) => adaResetKolom.includes(k)) ? "LENGKAP" : "ADA YANG HILANG"}`);
+
+  const peran = (await klienMentah.unsafe(`SELECT DISTINCT peran FROM th_users ORDER BY peran`)) as unknown as { peran: string }[];
+  const peranLama = peran.filter((x) => ["PM", "QA", "DEVELOPER", "BUSINESS_USER", "EKSTERNAL"].includes(x.peran));
+  if (peranLama.length) gagal++;
+  console.log(`    role legacy    : ${peranLama.length ? peranLama.map((x) => x.peran).join(", ") : "tidak ada"}`);
 
   // ---- Verifikasi trigger ----
   const trg = (await klienMentah.unsafe(
@@ -75,7 +92,7 @@ async function main() {
   console.log(`    trigger        : ${trg.map((t) => t.tgname).join(", ") || "TIDAK ADA"}`);
 
   console.log("");
-  console.log(`  === HASIL: ${gagal === 0 ? "SEMUA LENGKAP" : `${gagal} OBJEK HILANG`} ===`);
+  console.log(`  === HASIL: ${gagal === 0 ? "SEMUA LENGKAP" : `${gagal} PEMERIKSAAN GAGAL`} ===`);
   process.exit(gagal === 0 ? 0 : 1);
 }
 

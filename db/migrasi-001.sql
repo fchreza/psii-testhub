@@ -15,16 +15,16 @@ CREATE TABLE IF NOT EXISTS th_users (
   nama          varchar(120) NOT NULL,
   jabatan       varchar(80),
   /*
-   * Peran menentukan hak akses. EKSTERNAL dipisah dari BUSINESS_USER karena
-   * pengguna luar Kemenkeu hanya boleh melihat proyek yang ia menjadi
-   * anggotanya — sedangkan pegawai internal melihat semuanya.
+   * Hak aplikasi menggunakan lima peran. Dua role penguji Kemenkeu dibatasi
+   * ke proyek yang ditugaskan; ADMIN, PIMPINAN, dan INTERNAL_PSII melihat
+   * portofolio penuh (dengan izin tulis yang berbeda di aplikasi).
    */
-  peran         varchar(20) NOT NULL DEFAULT 'QA',
+  peran         varchar(20) NOT NULL DEFAULT 'INTERNAL_PSII',
   sandi_hash    varchar(200),
   aktif         boolean NOT NULL DEFAULT true,
   dibuat_pada   timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT th_users_peran_sah CHECK (peran IN
-    ('ADMIN','PIMPINAN','PM','QA','DEVELOPER','BUSINESS_USER','EKSTERNAL'))
+    ('ADMIN','PIMPINAN','INTERNAL_PSII','INTERNAL_KEMENKEU','EKSTERNAL_KEMENKEU'))
 );
 -- Email unik tanpa peduli besar-kecil huruf: "Budi@x.id" dan "budi@x.id"
 -- adalah orang yang sama, dan mengizinkan keduanya berarti dua akun.
@@ -132,25 +132,14 @@ CREATE TABLE IF NOT EXISTS th_scenarios (
   -- 8. Catatan Tindak Lanjut
   catatan_tindak_lanjut text,
 
-  /*
-   * Kolom di bawah ini SUDAH ADA tapi BELUM DIPAKAI di antarmuka.
-   *
-   * KENAPA DISIAPKAN: keputusan pemilik produk adalah memakai 8 kolom PRD,
-   * bukan 11 kolom seperti berkas nyata. Akibatnya tidak ada tempat khusus
-   * untuk "Hasil Aktual / Temuan" — padahal di berkas nyata kolom itu terpisah
-   * dari Catatan Tindak Lanjut (yang satu mencatat APA YANG TERJADI, yang satu
-   * APA YANG HARUS DILAKUKAN).
-   *
-   * Dengan kolom ini sudah ada, menampilkannya nanti cukup mengubah formulir —
-   * tanpa migrasi, tanpa menyentuh data yang sudah masuk.
-   */
+  /* Kolom tambahan di luar atribut wajib PRD. `hasil_aktual` ditampilkan di UI
+   * agar penguji dapat membedakan apa yang terjadi dari tindak lanjutnya. */
   tujuan_pengujian    text,
   prekondisi          text,
   data_uji            text,
   hasil_aktual        text,
 
-  -- Penanda kesiapan retest, diisi peran Developer (peran ini ada di PRD
-  -- Bagian 4 tapi tidak punya kolom di skema PRD Bagian 7).
+  -- Penanda kesiapan retest untuk dikelola Admin/Internal PSII.
   siap_retest         boolean NOT NULL DEFAULT false,
 
   urutan        integer NOT NULL DEFAULT 0,

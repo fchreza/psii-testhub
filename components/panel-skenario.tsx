@@ -26,9 +26,9 @@ type Riwayat = {
  * menutup penuh — dan itu memang yang diinginkan di layar kecil.
  */
 export function PanelSkenario({
-  skenario, projectId, bolehUbah, onTutup, onUbah,
+  skenario, projectId, bolehUbah, bolehKelolaSkenario, onTutup, onUbah,
 }: {
-  skenario: Skenario; projectId: string; bolehUbah: boolean;
+  skenario: Skenario; projectId: string; bolehUbah: boolean; bolehKelolaSkenario: boolean;
   onTutup: () => void; onUbah: (tambalan: Partial<Skenario>) => void;
 }) {
   const [riwayat, setRiwayat] = useState<Riwayat[]>([]);
@@ -98,6 +98,11 @@ export function PanelSkenario({
         </header>
 
         <div className="space-y-5 px-6 py-5">
+          <Bagian judul="Judul skenario">
+            <Teks nilai={skenario.judul} kosong="Judul belum diisi"
+              bolehUbah={bolehKelolaSkenario} onSimpan={(v) => onUbah({ judul: v })} />
+          </Bagian>
+
           {/* Sifat: label kiri kecil dan redup, nilai kanan lebih terang.
               Susunan ini yang membuat panel terbaca cepat — mata menyapu kolom
               label, bukan membaca kalimat. */}
@@ -127,12 +132,17 @@ export function PanelSkenario({
 
           <Bagian judul="Langkah pengujian">
             <Teks nilai={skenario.langkah_pengujian} kosong="Belum diisi"
-              bolehUbah={bolehUbah} onSimpan={(v) => onUbah({ langkah_pengujian: v })} />
+              bolehUbah={bolehKelolaSkenario} onSimpan={(v) => onUbah({ langkah_pengujian: v })} />
           </Bagian>
 
           <Bagian judul="Hasil yang diharapkan">
             <Teks nilai={skenario.hasil_diharapkan} kosong="Belum diisi"
-              bolehUbah={bolehUbah} onSimpan={(v) => onUbah({ hasil_diharapkan: v })} />
+              bolehUbah={bolehKelolaSkenario} onSimpan={(v) => onUbah({ hasil_diharapkan: v })} />
+          </Bagian>
+
+          <Bagian judul="Hasil aktual / temuan">
+            <Teks nilai={skenario.hasil_aktual} kosong="Catat apa yang benar-benar terjadi saat pengujian"
+              bolehUbah={bolehUbah} onSimpan={(v) => onUbah({ hasil_aktual: v })} />
           </Bagian>
 
           <Bagian judul="Catatan tindak lanjut">
@@ -144,7 +154,7 @@ export function PanelSkenario({
           </Bagian>
 
           <div className="border-t border-garis pt-4">
-            <BuktiSkenario projectId={projectId} scenarioId={skenario.id} bolehUbah={bolehUbah} />
+            <BuktiSkenario projectId={projectId} scenarioId={skenario.id} bolehUbah={bolehUbah} bolehHapus={bolehKelolaSkenario} />
           </div>
 
           {/* Riwayat perubahan: NFR-1 mewajibkan jejak, dan jejak yang tidak

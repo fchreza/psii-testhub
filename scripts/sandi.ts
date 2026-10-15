@@ -46,7 +46,7 @@ async function main() {
   }
 
   await klienMentah.unsafe(
-    `UPDATE th_users SET sandi_hash = $1, aktif = true WHERE id = $2::uuid`,
+    `UPDATE th_users SET sandi_hash = $1, aktif = true, sesi_versi = sesi_versi + 1 WHERE id = $2::uuid`,
     [hashSandi(sandi), p.id],
   );
 

@@ -2,9 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { klienMentah } from "@/db";
 import { Nav } from "@/components/nav";
-import { wajibMasuk, bolehAksesProyek } from "@/lib/gerbang";
+import { wajibMasuk, bolehAksesProyek, bolehKelolaProyek, bolehUbahEksekusi } from "@/lib/gerbang";
 import { tanggalID } from "@/lib/waktu";
 import { TabelSkenario, type Skenario, type Modul, type Orang } from "@/components/tabel-skenario";
+import { KelolaAksesProyek } from "@/components/kelola-akses-proyek";
+import { UbahTahapProyek } from "@/components/ubah-tahap-proyek";
+import { EditorMetadataProyek } from "@/components/editor-metadata-proyek";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +45,9 @@ export default async function HalamanProyek({
    */
   if (!(await bolehAksesProyek(saya, id))) notFound();
 
+  const kelolaProyek = bolehKelolaProyek(saya.peran);
+  const bolehUbah = bolehUbahEksekusi(saya.peran);
+
   const fase = faseDiminta === "UAT" ? "UAT" : "SIT";
 
   const modul = (await klienMentah.unsafe(
@@ -49,12 +55,31 @@ export default async function HalamanProyek({
     [id],
   )) as unknown as Modul[];
 
-  const orang = (await klienMentah.unsafe(
-    `SELECT id, nama, peran FROM th_users WHERE aktif = true ORDER BY nama`,
-  )) as unknown as Orang[];
+  const orang = (await (kelolaProyek
+    ? klienMentah.unsafe(`SELECT id, nama, peran FROM th_users
+                         WHERE aktif = true AND peran IN ('INTERNAL_KEMENKEU','EKSTERNAL_KEMENKEU')
+                         ORDER BY nama`)
+    : klienMentah.unsafe(
+      `SELECT DISTINCT u.id, u.nama, u.peran FROM th_users u
+       WHERE u.aktif = true AND (
+         u.id IN (SELECT user_id FROM th_project_members WHERE project_id = $1)
+         OR u.id IN (SELECT penguji_id FROM th_scenarios WHERE project_id = $1 AND penguji_id IS NOT NULL)
+       ) ORDER BY u.nama`, [id],
+    ))) as unknown as Orang[];
+
+  const calon = kelolaProyek ? (await klienMentah.unsafe(
+    `SELECT id, nama, email, peran FROM th_users
+     WHERE aktif = true AND peran IN ('INTERNAL_KEMENKEU','EKSTERNAL_KEMENKEU')
+     ORDER BY nama`,
+  )) as unknown as { id: string; nama: string; email: string; peran: string }[] : [];
+  const anggota = kelolaProyek ? (await klienMentah.unsafe(
+    `SELECT u.id, u.nama, u.email, u.peran, m.ditambahkan_pada
+     FROM th_project_members m JOIN th_users u ON u.id = m.user_id
+     WHERE m.project_id = $1 ORDER BY u.nama`, [id],
+  )) as unknown as { id: string; nama: string; email: string; peran: string; ditambahkan_pada: string }[] : [];
 
   const skenario = (await klienMentah.unsafe(`
-    SELECT s.id, s.kode, s.fase, s.judul, s.langkah_pengujian, s.hasil_diharapkan,
+    SELECT s.id, s.kode, s.fase, s.judul, s.langkah_pengujian, s.hasil_diharapkan, s.hasil_aktual,
            s.status, s.catatan_tindak_lanjut, s.siap_retest, s.module_id, s.urutan,
            s.penguji_id, u.nama AS penguji_nama,
            (SELECT count(*) FROM th_evidence e WHERE e.scenario_id = s.id)::int AS jumlah_bukti,
@@ -92,9 +117,29 @@ export default async function HalamanProyek({
                 {p.pm_nama ? ` · PM: ${p.pm_nama}` : ""}
               </p>
             </div>
-            <span className="rounded bg-kanvas px-2.5 py-1 text-[13px] font-medium text-tinta-2">
-              {LABEL_TAHAP[p.tahap] ?? p.tahap}
-            </span>
+            {kelolaProyek ? <div className="flex flex-wrap items-center gap-2">
+              <UbahTahapProyek projectId={id} tahap={p.tahap} />
+              <EditorMetadataProyek projectId={id} nilai={{
+                nama: p.nama,
+                modulAplikasi: p.modul_aplikasi as string | null,
+                unitBisnis: p.unit_bisnis as string | null,
+                ruangLingkup: p.ruang_lingkup as string | null,
+                sumberAcuan: p.sumber_acuan as string | null,
+                dasarRegulasi: p.dasar_regulasi as string | null,
+                lingkungan: p.lingkungan as string,
+                alamatServer: p.alamat_server as string | null,
+                tahunAnggaran: p.tahun_anggaran as number | null,
+                tanggalMulai: p.tanggal_mulai as string | Date | null,
+                targetSelesai: p.target_selesai as string | Date | null,
+                versiDokumen: p.versi_dokumen as string | null,
+                disusunOleh: p.disusun_oleh as string | null,
+                statusDokumen: p.status_dokumen as string | null,
+              }} />
+            </div> : (
+              <span className="rounded bg-kanvas px-2.5 py-1 text-[13px] font-medium text-tinta-2">
+                {LABEL_TAHAP[p.tahap] ?? p.tahap}
+              </span>
+            )}
           </div>
         </header>
 
@@ -108,6 +153,9 @@ export default async function HalamanProyek({
             ["Ruang lingkup", p.ruang_lingkup],
             ["Alamat server", p.alamat_server],
             ["Tahun anggaran", p.tahun_anggaran],
+            ["Versi dokumen", p.versi_dokumen],
+            ["Disusun oleh", p.disusun_oleh],
+            ["Status dokumen", p.status_dokumen],
             ["Periode", p.tanggal_mulai
               ? `${tanggalID(p.tanggal_mulai as string | Date)} – ${tanggalID(p.target_selesai as string | Date | null)}`
               : null],
@@ -120,6 +168,10 @@ export default async function HalamanProyek({
             </div>
           ))}
         </dl>
+
+        {kelolaProyek && (
+          <KelolaAksesProyek projectId={id} calon={calon} anggotaAwal={anggota} />
+        )}
 
         {/* Ringkasan angka. Ini yang paling sering ditanya pimpinan, jadi
             diletakkan sebelum tabel, bukan setelahnya. */}
@@ -162,7 +214,8 @@ export default async function HalamanProyek({
           modul={modul}
           orang={orang}
           sayaId={saya.id}
-          bolehUbah={saya.peran !== "PIMPINAN"}
+          bolehUbah={bolehUbah}
+          bolehKelolaSkenario={kelolaProyek}
         />
       </main>
     </>

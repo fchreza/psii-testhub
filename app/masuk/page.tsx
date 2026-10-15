@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Suspense, useState } from "react";
 
 function FormMasuk() {
@@ -27,7 +28,11 @@ function FormMasuk() {
        * merasa sandinya benar tapi tidak terjadi apa-apa.
        */
       router.refresh();
-      router.push(cari.get("lanjut") ?? "/");
+      const lanjut = cari.get("lanjut");
+      const aman = lanjut && lanjut.startsWith("/") && !lanjut.startsWith("//") && !lanjut.includes(String.fromCharCode(92))
+        ? lanjut
+        : "/";
+      router.push(aman);
     } else {
       const { pesan } = await r.json().catch(() => ({ pesan: "Gagal masuk" }));
       setGalat(pesan ?? "Gagal masuk");
@@ -51,7 +56,10 @@ function FormMasuk() {
                 className="w-full rounded-md border border-garis-kuat px-3 py-2.5 text-[16px] text-tinta outline-none focus:border-aksi" />
             </div>
             <div>
-              <label htmlFor="sandi" className="mb-1.5 block text-[14px] font-medium text-tinta">Sandi</label>
+              <div className="mb-1.5 flex items-center justify-between gap-3">
+                <label htmlFor="sandi" className="block text-[14px] font-medium text-tinta">Sandi</label>
+                <Link href="/pulihkan-sandi" className="text-[12.5px] font-medium text-aksi hover:underline">Lupa sandi?</Link>
+              </div>
               <input id="sandi" type="password" autoComplete="current-password" required
                 value={sandi} onChange={(e) => setSandi(e.target.value)}
                 className="w-full rounded-md border border-garis-kuat px-3 py-2.5 text-[16px] text-tinta outline-none focus:border-aksi" />

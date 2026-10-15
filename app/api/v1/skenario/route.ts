@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { klienMentah } from "@/db";
-import { wajibMasukApi, bolehAksesProyek } from "@/lib/gerbang";
+import {
+  wajibMasukApi, bolehAksesProyek, bolehKelolaSkenario, bolehUbahEksekusi,
+} from "@/lib/gerbang";
 
 export const dynamic = "force-dynamic";
 
-const UUID = /^[0-9a-f-]{36}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STATUS_SAH = ["PENDING","PASS","FAIL","BLOCKED"];
 
 /**
@@ -25,18 +27,22 @@ export async function POST(req: Request) {
     { aksi?: string; projectId?: string; scenarioId?: string;
       kode?: string; fase?: string; judul?: string; moduleId?: string | null;
       langkahPengujian?: string; hasilDiharapkan?: string;
-      pengujiId?: string | null; status?: string; catatanTindakLanjut?: string;
+      hasilAktual?: string; pengujiId?: string | null; status?: string; catatanTindakLanjut?: string;
       diubahPada?: string; siapRetest?: boolean; urutan?: number } | null;
 
   if (!isi?.aksi) return NextResponse.json({ pesan: "aksi wajib" }, { status: 400 });
-
-  // Hak akses proyek diperiksa untuk SETIAP aksi, sebelum apa pun ditulis.
-  // Tanpa ini, pengguna eksternal bisa mengubah skenario proyek yang bukan
-  // miliknya hanya dengan menebak nomor proyeknya.
-  if (isi.projectId) {
-    if (!(await bolehAksesProyek(saya, isi.projectId))) {
-      return NextResponse.json({ pesan: "Tidak punya akses ke proyek ini" }, { status: 403 });
-    }
+  if (!isi.projectId || !/^PRJ-\d{3,}$/.test(isi.projectId)) {
+    return NextResponse.json({ pesan: "projectId wajib dan harus sah." }, { status: 400 });
+  }
+  // Scope proyek diperiksa untuk setiap operasi, termasuk ubah/hapus skenario.
+  if (!(await bolehAksesProyek(saya, isi.projectId))) {
+    return NextResponse.json({ pesan: "Tidak punya akses ke proyek ini" }, { status: 403 });
+  }
+  if (!bolehUbahEksekusi(saya.peran)) {
+    return NextResponse.json({ pesan: "Peran Pimpinan hanya dapat melihat." }, { status: 403 });
+  }
+  if (["tambah", "hapus"].includes(isi.aksi) && !bolehKelolaSkenario(saya.peran)) {
+    return NextResponse.json({ pesan: "Hanya Admin atau Internal PSII yang dapat membuat atau menghapus skenario." }, { status: 403 });
   }
 
   try {
@@ -48,6 +54,21 @@ export async function POST(req: Request) {
       }
       const judul = (isi.judul ?? "").trim().slice(0, 200);
       if (!judul) return NextResponse.json({ pesan: "Judul skenario wajib diisi" }, { status: 400 });
+      let pengujiId: string | null = null;
+      if (isi.pengujiId) {
+        if (!UUID.test(isi.pengujiId)) return NextResponse.json({ pesan: "Penguji tidak sah." }, { status: 400 });
+        const [penguji] = (await klienMentah.unsafe(
+          `SELECT id, peran FROM th_users WHERE id = $1::uuid AND aktif = true`, [isi.pengujiId],
+        )) as unknown as { id: string; peran: string }[];
+        if (!penguji || !["INTERNAL_KEMENKEU", "EKSTERNAL_KEMENKEU"].includes(penguji.peran)) {
+          return NextResponse.json({ pesan: "Pilih akun penguji Internal atau Eksternal Kemenkeu yang aktif." }, { status: 400 });
+        }
+        const [anggota] = (await klienMentah.unsafe(
+          `SELECT 1 AS ada FROM th_project_members WHERE project_id = $1 AND user_id = $2::uuid`, [projectId, isi.pengujiId],
+        )) as unknown as { ada: number }[];
+        if (!anggota) return NextResponse.json({ pesan: "Penguji harus ditugaskan pada proyek ini terlebih dahulu." }, { status: 400 });
+        pengujiId = isi.pengujiId;
+      }
 
       /*
        * Kode dibuat otomatis dengan awalan modul: A-01, A-02, B-01, ...
@@ -60,9 +81,12 @@ export async function POST(req: Request) {
       let awalan = "S";
       if (isi.moduleId && UUID.test(isi.moduleId)) {
         const [m] = (await klienMentah.unsafe(
-          `SELECT kode FROM th_modules WHERE id = $1::uuid`, [isi.moduleId],
+          `SELECT kode FROM th_modules WHERE id = $1::uuid AND project_id = $2`, [isi.moduleId, projectId],
         )) as unknown as { kode: string }[];
-        if (m) awalan = m.kode;
+        if (!m) return NextResponse.json({ pesan: "Modul tidak ditemukan di proyek ini." }, { status: 400 });
+        awalan = m.kode;
+      } else if (isi.moduleId) {
+        return NextResponse.json({ pesan: "moduleId tidak sah." }, { status: 400 });
       }
       const [urut] = (await klienMentah.unsafe(
         `SELECT COALESCE(MAX(NULLIF(regexp_replace(kode, '^.*-', ''), '')::int), 0) AS n
@@ -84,7 +108,7 @@ export async function POST(req: Request) {
          RETURNING id, kode`,
         [projectId, isi.moduleId ?? null, kode, fase, judul,
          isi.langkahPengujian ?? null, isi.hasilDiharapkan ?? null,
-         isi.pengujiId ?? null, isi.catatanTindakLanjut ?? null, pos.n],
+         pengujiId, isi.catatanTindakLanjut ?? null, pos.n],
       )) as unknown as { id: string; kode: string }[];
 
       revalidatePath(`/proyek/${projectId}`);
@@ -98,18 +122,26 @@ export async function POST(req: Request) {
       }
 
       const [lama] = (await klienMentah.unsafe(
-        `SELECT project_id, status, catatan_tindak_lanjut, diubah_pada
-         FROM th_scenarios WHERE id = $1::uuid`, [scenarioId],
+        `SELECT project_id, judul, langkah_pengujian, hasil_diharapkan, hasil_aktual,
+                penguji_id, module_id, siap_retest, status, catatan_tindak_lanjut, diubah_pada
+         FROM th_scenarios WHERE id = $1::uuid AND project_id = $2`, [scenarioId, isi.projectId],
       )) as unknown as {
-        project_id: string; status: string;
+        project_id: string; judul: string; langkah_pengujian: string | null;
+        hasil_diharapkan: string | null; hasil_aktual: string | null;
+        penguji_id: string | null; module_id: string | null; siap_retest: boolean; status: string;
         catatan_tindak_lanjut: string | null; diubah_pada: string;
       }[];
       if (!lama) return NextResponse.json({ pesan: "Skenario tidak ditemukan" }, { status: 404 });
 
+      const kolomMaster = ["judul", "langkahPengujian", "hasilDiharapkan", "pengujiId", "moduleId", "siapRetest"] as const;
+      if (!bolehKelolaSkenario(saya.peran) && kolomMaster.some((k) => isi[k] !== undefined)) {
+        return NextResponse.json({ pesan: "Akun penguji hanya dapat mengubah status, hasil aktual, dan catatan tindak lanjut." }, { status: 403 });
+      }
+
       /*
        * Kunci optimistik.
        *
-       * KENAPA: QA dan Business User sering membuka skenario yang sama. Tanpa
+       * KENAPA: dua penguji dapat membuka skenario yang sama. Tanpa
        * pemeriksaan ini, yang menyimpan belakangan menimpa perubahan yang
        * pertama — tanpa peringatan, dan tanpa jejak.
        *
@@ -158,14 +190,18 @@ export async function POST(req: Request) {
       const catat: { kolom: string; lama: string | null; baru: string | null }[] = [];
 
       const pasang = (nama: string, v: unknown, lamaV: unknown) => {
-        kolom.push(`${nama} = $${kolom.length + 2}`);
+        kolom.push(`${nama} = $${kolom.length + 3}`);
         nilai.push(v as string | number | boolean | null);
         const a = lamaV === null || lamaV === undefined ? null : String(lamaV);
         const b = v === null || v === undefined ? null : String(v);
         if (a !== b) catat.push({ kolom: nama, lama: a, baru: b });
       };
 
-      if (isi.judul !== undefined) pasang("judul", isi.judul.trim().slice(0, 200), undefined);
+      if (isi.judul !== undefined) {
+        const judul = isi.judul.trim().slice(0, 200);
+        if (!judul) return NextResponse.json({ pesan: "Judul skenario wajib diisi." }, { status: 400 });
+        pasang("judul", judul, lama.judul);
+      }
       if (isi.status !== undefined) {
         if (!STATUS_SAH.includes(isi.status)) {
           return NextResponse.json({ pesan: `Status tidak sah: ${isi.status}` }, { status: 400 });
@@ -173,19 +209,45 @@ export async function POST(req: Request) {
         pasang("status", isi.status, lama.status);
       }
       if (isi.catatanTindakLanjut !== undefined) {
-        pasang("catatan_tindak_lanjut", isi.catatanTindakLanjut, lama.catatan_tindak_lanjut);
+        pasang("catatan_tindak_lanjut", (isi.catatanTindakLanjut ?? "").slice(0, 20000), lama.catatan_tindak_lanjut);
       }
-      if (isi.langkahPengujian !== undefined) pasang("langkah_pengujian", isi.langkahPengujian, undefined);
-      if (isi.hasilDiharapkan !== undefined) pasang("hasil_diharapkan", isi.hasilDiharapkan, undefined);
-      if (isi.pengujiId !== undefined) pasang("penguji_id", isi.pengujiId || null, undefined);
-      if (isi.moduleId !== undefined) pasang("module_id", isi.moduleId || null, undefined);
-      if (isi.siapRetest !== undefined) pasang("siap_retest", isi.siapRetest, undefined);
+      if (isi.langkahPengujian !== undefined) pasang("langkah_pengujian", isi.langkahPengujian.slice(0, 20000), lama.langkah_pengujian);
+      if (isi.hasilDiharapkan !== undefined) pasang("hasil_diharapkan", isi.hasilDiharapkan.slice(0, 20000), lama.hasil_diharapkan);
+      if (isi.hasilAktual !== undefined) pasang("hasil_aktual", isi.hasilAktual.slice(0, 20000), lama.hasil_aktual);
+      if (isi.pengujiId !== undefined) {
+        if (isi.pengujiId && !UUID.test(isi.pengujiId)) return NextResponse.json({ pesan: "Penguji tidak sah." }, { status: 400 });
+        if (isi.pengujiId) {
+          const [penguji] = (await klienMentah.unsafe(
+            `SELECT id, peran FROM th_users WHERE id = $1::uuid AND aktif = true`, [isi.pengujiId],
+          )) as unknown as { id: string; peran: string }[];
+          if (!penguji) return NextResponse.json({ pesan: "Akun penguji tidak aktif atau tidak ditemukan." }, { status: 400 });
+          if (!["INTERNAL_KEMENKEU", "EKSTERNAL_KEMENKEU"].includes(penguji.peran)) {
+            return NextResponse.json({ pesan: "Hanya akun penguji Internal/Eksternal Kemenkeu yang bisa ditugaskan." }, { status: 400 });
+          }
+          const [anggota] = (await klienMentah.unsafe(
+            `SELECT 1 AS ada FROM th_project_members WHERE project_id = $1 AND user_id = $2::uuid`, [isi.projectId, isi.pengujiId],
+          )) as unknown as { ada: number }[];
+          if (!anggota) return NextResponse.json({ pesan: "Penguji harus ditugaskan pada proyek ini terlebih dahulu." }, { status: 400 });
+        }
+        pasang("penguji_id", isi.pengujiId || null, lama.penguji_id);
+      }
+      if (isi.moduleId !== undefined) {
+        if (isi.moduleId && !UUID.test(isi.moduleId)) return NextResponse.json({ pesan: "moduleId tidak sah." }, { status: 400 });
+        if (isi.moduleId) {
+          const [modul] = (await klienMentah.unsafe(
+            `SELECT id FROM th_modules WHERE id = $1::uuid AND project_id = $2`, [isi.moduleId, isi.projectId],
+          )) as unknown as { id: string }[];
+          if (!modul) return NextResponse.json({ pesan: "Modul tidak ditemukan di proyek ini." }, { status: 400 });
+        }
+        pasang("module_id", isi.moduleId || null, lama.module_id);
+      }
+      if (isi.siapRetest !== undefined) pasang("siap_retest", isi.siapRetest, lama.siap_retest);
 
       if (kolom.length === 0) return NextResponse.json({ ok: true, tanpaPerubahan: true });
 
       await klienMentah.unsafe(
-        `UPDATE th_scenarios SET ${kolom.join(", ")} WHERE id = $1::uuid`,
-        [scenarioId, ...nilai],
+        `UPDATE th_scenarios SET ${kolom.join(", ")} WHERE id = $1::uuid AND project_id = $2`,
+        [scenarioId, isi.projectId, ...nilai],
       );
 
       // Audit log: NFR-1 mewajibkan setiap perubahan status dan catatan
@@ -203,7 +265,7 @@ export async function POST(req: Request) {
       // Kembalikan cap waktu terbaru supaya klien bisa memakai kunci optimistik
       // berikutnya tanpa memuat ulang halaman.
       const [baru] = (await klienMentah.unsafe(
-        `SELECT diubah_pada FROM th_scenarios WHERE id = $1::uuid`, [scenarioId],
+        `SELECT diubah_pada FROM th_scenarios WHERE id = $1::uuid AND project_id = $2`, [scenarioId, isi.projectId],
       )) as unknown as { diubah_pada: string }[];
 
       revalidatePath(`/proyek/${lama.project_id}`);
@@ -215,6 +277,11 @@ export async function POST(req: Request) {
       if (!scenarioId || !UUID.test(scenarioId)) {
         return NextResponse.json({ pesan: "scenarioId tidak sah" }, { status: 400 });
       }
+
+      const [ada] = (await klienMentah.unsafe(
+        `SELECT id FROM th_scenarios WHERE id = $1::uuid AND project_id = $2`, [scenarioId, isi.projectId],
+      )) as unknown as { id: string }[];
+      if (!ada) return NextResponse.json({ pesan: "Skenario tidak ditemukan di proyek ini." }, { status: 404 });
 
       /*
        * KENAPA SKENARIO YANG SUDAH PUNYA BUKTI TIDAK BOLEH DIHAPUS:
@@ -232,8 +299,8 @@ export async function POST(req: Request) {
         }, { status: 400 });
       }
 
-      await klienMentah.unsafe(`DELETE FROM th_scenarios WHERE id = $1::uuid`, [scenarioId]);
-      if (isi.projectId) revalidatePath(`/proyek/${isi.projectId}`);
+      await klienMentah.unsafe(`DELETE FROM th_scenarios WHERE id = $1::uuid AND project_id = $2`, [scenarioId, isi.projectId]);
+      revalidatePath(`/proyek/${isi.projectId}`);
       return NextResponse.json({ ok: true });
     }
 

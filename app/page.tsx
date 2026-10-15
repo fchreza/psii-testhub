@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { klienMentah } from "@/db";
 import { Nav } from "@/components/nav";
-import { wajibMasuk } from "@/lib/gerbang";
+import { internal, wajibMasuk } from "@/lib/gerbang";
 
 export const dynamic = "force-dynamic";
 
@@ -15,19 +15,21 @@ export const dynamic = "force-dynamic";
  */
 export default async function Beranda() {
   const saya = await wajibMasuk();
+  const cakupan = internal(saya.peran)
+    ? "true"
+    : `p.id IN (SELECT project_id FROM th_project_members WHERE user_id = '${saya.id}'::uuid)`;
 
   const ringkas = (await klienMentah.unsafe(`
     SELECT
-      (SELECT count(*) FROM th_projects)::int AS proyek,
-      (SELECT count(*) FROM th_scenarios)::int AS skenario,
-      (SELECT count(*) FROM th_scenarios WHERE status = 'PENDING')::int AS belum,
-      (SELECT count(*) FROM th_scenarios WHERE status = 'PASS')::int AS lulus,
-      (SELECT count(*) FROM th_scenarios WHERE status = 'FAIL')::int AS gagal,
-      (SELECT count(*) FROM th_scenarios WHERE status = 'BLOCKED')::int AS tertunda,
-      (SELECT count(*) FROM th_users WHERE aktif)::int AS pengguna
+      (SELECT count(*) FROM th_projects p WHERE ${cakupan})::int AS proyek,
+      (SELECT count(*) FROM th_scenarios s JOIN th_projects p ON p.id = s.project_id WHERE ${cakupan})::int AS skenario,
+      (SELECT count(*) FROM th_scenarios s JOIN th_projects p ON p.id = s.project_id WHERE s.status = 'PENDING' AND ${cakupan})::int AS belum,
+      (SELECT count(*) FROM th_scenarios s JOIN th_projects p ON p.id = s.project_id WHERE s.status = 'PASS' AND ${cakupan})::int AS lulus,
+      (SELECT count(*) FROM th_scenarios s JOIN th_projects p ON p.id = s.project_id WHERE s.status = 'FAIL' AND ${cakupan})::int AS gagal,
+      (SELECT count(*) FROM th_scenarios s JOIN th_projects p ON p.id = s.project_id WHERE s.status = 'BLOCKED' AND ${cakupan})::int AS tertunda
   `)) as unknown as {
     proyek: number; skenario: number; belum: number;
-    lulus: number; gagal: number; tertunda: number; pengguna: number;
+    lulus: number; gagal: number; tertunda: number;
   }[];
 
   const k = ringkas[0];
@@ -107,11 +109,11 @@ export default async function Beranda() {
               </span>
             </Link>
             {saya.peran === "ADMIN" && (
-              <Link href="/pengguna"
+              <Link href="/dashboard/admin"
                 className="sentuh rounded-lg border border-garis bg-kartu px-4 py-3.5 hover:border-garis-kuat">
-                <span className="block text-[15px] font-semibold text-tinta">Pengguna</span>
+                <span className="block text-[15px] font-semibold text-tinta">Administrasi sistem</span>
                 <span className="mt-0.5 block text-[13.5px] text-tinta-3">
-                  {k.pengguna} akun aktif
+                  Kelola akun dan akses proyek
                 </span>
               </Link>
             )}

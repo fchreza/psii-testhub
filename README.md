@@ -20,16 +20,21 @@ Dari berkas UAT nyata di kantor (42 skenario, 6 modul):
 
 | Bagian | Keadaan |
 |---|---|
-| Skema basis data | 7 tabel, 8 indeks, terverifikasi dari katalog Postgres |
-| Masuk & peran | 7 peran, scrypt, cookie bertanda tangan, batas percobaan per-email |
-| Hak akses per proyek | Pengguna EKSTERNAL hanya melihat proyeknya |
-| Proyek | Metadata lengkap dari halaman Cover berkas contoh |
-| Skenario SIT & UAT | 8 atribut sesuai PRD, bisa diketik di tempat |
-| Audit log | Perubahan status & catatan tercatat |
+| Skema basis data | 8 tabel, 11 indeks aplikasi, diverifikasi oleh runner migrasi |
+| Masuk & peran | 5 peran, scrypt, cookie bertanda tangan, batas percobaan per-email |
+| Pemulihan sandi | Tautan email sekali pakai, berlaku 30 menit, rate-limited, membatalkan sesi lama |
+| Hak akses per proyek | Internal Kemenkeu dan Eksternal Kemenkeu hanya melihat proyek yang ditugaskan |
+| Dashboard Admin | Area privat; Admin mengelola akun, Pimpinan dapat meninjau secara baca-saja |
+| Tautan penguji | Tautan SIT/UAT tetap meminta login dan penugasan proyek; bukan akses publik |
+| Proyek | Metadata Cover dapat diubah Admin/Internal PSII dan tercatat pada audit log |
+| Skenario SIT & UAT | Admin/Internal PSII mengelola definisi; tester mengisi status, hasil aktual, dan catatan |
+| Bukti pengujian | Unggah dan daftar bukti; penghapusan hanya Admin/Internal PSII |
+| Dashboard | Ringkasan dibatasi ke portofolio yang boleh dilihat akun |
+| Audit log | Perubahan hasil/status, catatan, bukti, dan tahap proyek tercatat |
 | Aturan FR-2.5 | Status Gagal/Tertunda wajib bercatatan atau berbukti |
 
-Belum dikerjakan: unggah bukti, dashboard pimpinan, Berita Acara & tanda tangan,
-impor .xlsx, penyaring lintas proyek.
+Belum dikerjakan: Berita Acara & tanda tangan digital, impor .xlsx, ekspor
+laporan, dan penyaring lanjutan lintas proyek.
 
 ## Menjalankan
 
@@ -49,6 +54,15 @@ npm run typecheck
 npm run build
 ```
 
+Pemulihan sandi mandiri memerlukan `APP_URL`, `RESEND_API_KEY`, dan `RESEND_FROM`
+di `.env.local`/environment deployment. `RESEND_FROM` harus memakai alamat pada
+domain yang sudah diverifikasi di Resend; `APP_URL` production harus HTTPS. Tanpa
+konfigurasi ini, halaman pemulihan akan mengarahkan pengguna untuk menghubungi Admin.
+
+Migrasi `003` menambahkan penyimpanan hash token pemulihan dan `sesi_versi`.
+Jalankan `npm run migrasi` pada database TestHub yang benar sebelum deployment
+kode yang memakai kolom baru.
+
 ## Catatan rancangan
 
 **Satu fungsi tanggal WIB untuk seluruh aplikasi** (`lib/waktu.ts`). Server
@@ -62,11 +76,10 @@ yang belum selesai diuji tidak boleh terlihat seperti sudah selesai. Karena itu
 angka ini **bukan** syarat kelayakan Berita Acara; syaratnya adalah tidak ada
 sisa Pending/Fail/Blocked.
 
-**Kolom cadangan sudah ada tapi belum dipakai UI.** Keputusan pemilik produk
-adalah 8 kolom PRD, bukan 11 kolom seperti berkas nyata. Akibatnya tidak ada
-tempat khusus untuk "Hasil Aktual / Temuan". Kolom `tujuan_pengujian`,
-`prekondisi`, `data_uji`, dan `hasil_aktual` sudah disiapkan di tabel — jadi
-menampilkannya nanti cukup mengubah formulir, tanpa migrasi.
+**Hasil aktual/temuan** memakai kolom `hasil_aktual` yang sudah tersedia pada
+skema awal; pengguna penguji dapat mengisinya langsung dari tabel/panel detail.
+Kolom `tujuan_pengujian`, `prekondisi`, dan `data_uji` masih menjadi ruang
+pengembangan; saat ini tidak ditampilkan pada formulir.
 
 **Relasi menyimpan ID, bukan judul.** Kalau yang tersimpan judul, relasi putus
 begitu judulnya diganti.
@@ -87,6 +100,6 @@ Bucket penyimpanan juga terpisah: `psii-testhub` (bukan `angkutin`).
 
 - `docs/analisa-prd.md` — analisa PRD, celah yang ditemukan, keputusan pemilik produk
 - `docs/plan-irisan-1.md` — rencana pengerjaan dan temuan dari berkas contoh
-- `db/migrasi-001.sql` — DDL, komentar berisi alasan setiap pilihan
+- `db/migrasi-001.sql`, `db/migrasi-002-peran.sql`, `db/migrasi-003-pemulihan-sandi.sql` — skema, peran, dan pemulihan sandi
 - `lib/waktu.ts` — satu sumber tanggal WIB
 - `lib/gerbang.ts` — satu tempat pemeriksaan sesi dan hak akses

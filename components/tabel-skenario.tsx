@@ -7,7 +7,7 @@ import { PanelSkenario } from "./panel-skenario";
 
 export type Skenario = {
   id: string; kode: string; fase: string; judul: string;
-  langkah_pengujian: string | null; hasil_diharapkan: string | null;
+  langkah_pengujian: string | null; hasil_diharapkan: string | null; hasil_aktual: string | null;
   status: string; catatan_tindak_lanjut: string | null;
   siap_retest: boolean; module_id: string | null; urutan: number;
   penguji_id: string | null; penguji_nama: string | null;
@@ -28,10 +28,10 @@ const STATUS_PILIHAN = ["PENDING","PASS","FAIL","BLOCKED"];
  * yang terjadi pada spreadsheet di kantor (10 dari 42 skenario tidak terisi).
  */
 export function TabelSkenario({
-  projectId, fase, skenarioAwal, modul, orang, sayaId, bolehUbah,
+  projectId, fase, skenarioAwal, modul, orang, sayaId, bolehUbah, bolehKelolaSkenario,
 }: {
   projectId: string; fase: string; skenarioAwal: Skenario[];
-  modul: Modul[]; orang: Orang[]; sayaId: string; bolehUbah: boolean;
+  modul: Modul[]; orang: Orang[]; sayaId: string; bolehUbah: boolean; bolehKelolaSkenario: boolean;
 }) {
   const [data, setData] = useState<Skenario[]>(skenarioAwal);
   const [pesan, setPesan] = useState<{ jenis: "galat" | "info"; teks: string } | null>(null);
@@ -87,7 +87,7 @@ export function TabelSkenario({
     const { id, kode } = await r.json();
     setData((d) => [...d, {
       id, kode, fase, judul: "Skenario baru",
-      langkah_pengujian: null, hasil_diharapkan: null,
+      langkah_pengujian: null, hasil_diharapkan: null, hasil_aktual: null,
       status: "PENDING", catatan_tindak_lanjut: null,
       siap_retest: false, module_id: moduleId, urutan: d.length,
       penguji_id: null, penguji_nama: null, jumlah_bukti: 0,
@@ -225,7 +225,7 @@ export function TabelSkenario({
                 <table className="w-full min-w-max border-collapse text-[13.5px]">
                   <thead>
                     <tr className="border-b border-garis bg-kanvas text-left">
-                      {["ID","Judul Skenario","Langkah Pengujian","Hasil yang Diharapkan",
+                      {["ID","Judul Skenario","Langkah Pengujian","Hasil yang Diharapkan","Hasil aktual / temuan",
                         "Penguji","Bukti","Status","Catatan Tindak Lanjut",""].map((h, i) => (
                         <th key={i} className="whitespace-nowrap px-3 py-2.5 text-[12px] font-semibold uppercase tracking-wide text-tinta-3">
                           {h}
@@ -252,17 +252,22 @@ export function TabelSkenario({
                           </td>
 
                           <td className="max-w-[280px] px-3 py-2">
-                            <TeksSel nilai={s.langkah_pengujian ?? ""} bolehUbah={bolehUbah}
+                            <TeksSel nilai={s.langkah_pengujian ?? ""} bolehUbah={bolehKelolaSkenario}
                               simpan={(v) => void simpan(s.id, { langkahPengujian: v })} banyakBaris />
                           </td>
 
                           <td className="max-w-[280px] px-3 py-2">
-                            <TeksSel nilai={s.hasil_diharapkan ?? ""} bolehUbah={bolehUbah}
+                            <TeksSel nilai={s.hasil_diharapkan ?? ""} bolehUbah={bolehKelolaSkenario}
                               simpan={(v) => void simpan(s.id, { hasilDiharapkan: v })} banyakBaris />
                           </td>
 
+                          <td className="max-w-[280px] px-3 py-2">
+                            <TeksSel nilai={s.hasil_aktual ?? ""} bolehUbah={bolehUbah}
+                              simpan={(v) => void simpan(s.id, { hasilAktual: v })} banyakBaris />
+                          </td>
+
                           <td className="px-3 py-2">
-                            <select value={s.penguji_id ?? ""} disabled={!bolehUbah}
+                            <select value={s.penguji_id ?? ""} disabled={!bolehKelolaSkenario}
                               onChange={(e) => void simpan(s.id, { pengujiId: e.target.value || null })}
                               aria-label={`Penguji ${s.kode}`}
                               className="max-w-[150px] rounded border border-transparent bg-transparent px-1 py-1 text-[13.5px] text-tinta-2 hover:border-garis focus:border-aksi focus:outline-none">
@@ -317,7 +322,7 @@ export function TabelSkenario({
                           </td>
 
                           <td className="px-2 py-2 text-right">
-                            {bolehUbah && (
+                            {bolehKelolaSkenario && (
                               <button type="button" onClick={() => void hapus(s)}
                                 aria-label={`Hapus ${s.kode}`} title="Hapus skenario"
                                 className="rounded px-2 py-1 text-[12.5px] text-tinta-3 opacity-0 transition-opacity hover:bg-gagal-lembut hover:text-gagal focus:opacity-100 group-hover:opacity-100">
@@ -334,7 +339,7 @@ export function TabelSkenario({
             </section>
           ))}
 
-          {bolehUbah && (
+          {bolehKelolaSkenario && (
             <div className="flex flex-wrap items-center gap-4">
               <button type="button" onClick={() => void tambah(modul[0]?.id ?? null)} disabled={sibuk}
                 className="sentuh rounded-md border border-garis bg-kartu px-3.5 text-[14px] font-medium text-tinta-2 hover:border-garis-kuat disabled:opacity-60">
@@ -354,6 +359,7 @@ export function TabelSkenario({
           skenario={terpilih}
           projectId={projectId}
           bolehUbah={bolehUbah}
+          bolehKelolaSkenario={bolehKelolaSkenario}
           onTutup={() => setBukaPanel(null)}
           onUbah={(tambalan) => {
             /*
@@ -368,6 +374,7 @@ export function TabelSkenario({
             if ("catatan_tindak_lanjut" in tambalan) kirim.catatanTindakLanjut = tambalan.catatan_tindak_lanjut;
             if ("langkah_pengujian" in tambalan) kirim.langkahPengujian = tambalan.langkah_pengujian;
             if ("hasil_diharapkan" in tambalan) kirim.hasilDiharapkan = tambalan.hasil_diharapkan;
+            if ("hasil_aktual" in tambalan) kirim.hasilAktual = tambalan.hasil_aktual;
             if (kunci && Object.keys(kirim).length === 0) kirim[kunci] = tambalan[kunci as keyof typeof tambalan];
             void simpan(terpilih.id, kirim);
           }}

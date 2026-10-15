@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { klienMentah } from "@/db";
 import { Nav } from "@/components/nav";
-import { wajibMasuk, internal } from "@/lib/gerbang";
+import { wajibMasuk, internal, bolehKelolaProyek } from "@/lib/gerbang";
 import { tanggalID } from "@/lib/waktu";
 import { TombolProyekBaru } from "@/components/tombol-proyek-baru";
 
@@ -31,6 +31,7 @@ const LABEL_TAHAP: Record<string, string> = {
 export default async function HalamanProyek() {
   const saya = await wajibMasuk();
   const lihatSemua = internal(saya.peran);
+  const dapatMengelola = bolehKelolaProyek(saya.peran);
 
   const daftar = (await klienMentah.unsafe(`
     SELECT p.id, p.nama, p.modul_aplikasi, p.unit_bisnis, p.tahap, p.lingkungan,
@@ -60,7 +61,7 @@ export default async function HalamanProyek() {
                 : `${daftar.length} proyek yang Anda menjadi anggotanya`}
             </p>
           </div>
-          {lihatSemua && <TombolProyekBaru />}
+          {dapatMengelola && <TombolProyekBaru />}
         </header>
 
         {daftar.length === 0 ? (
@@ -68,7 +69,9 @@ export default async function HalamanProyek() {
             <p className="text-[15px] font-medium text-tinta">Belum ada proyek</p>
             <p className="mx-auto mt-1 max-w-md text-[14px] leading-relaxed text-tinta-2">
               {lihatSemua
-                ? "Proyek adalah wadah untuk skenario SIT dan UAT. Tekan tombol di atas untuk membuat yang pertama."
+                ? dapatMengelola
+                  ? "Proyek adalah wadah untuk skenario SIT dan UAT. Tekan tombol di atas untuk membuat yang pertama."
+                  : "Belum ada proyek di portofolio yang dapat Anda lihat."
                 : "Anda belum ditambahkan sebagai anggota proyek mana pun. Hubungi admin."}
             </p>
           </div>

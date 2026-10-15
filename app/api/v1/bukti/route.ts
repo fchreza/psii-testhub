@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { klienMentah } from "@/db";
-import { wajibMasukApi, bolehAksesProyek } from "@/lib/gerbang";
+import { wajibMasukApi, bolehAksesProyek, bolehKelolaProyek, bolehUbahEksekusi } from "@/lib/gerbang";
 import {
   urlUnggah, urlLihat, objekAda, hapusObjek, kunciBukti,
   jenisDikenal, BATAS_BUKTI, JENIS_BUKTI,
@@ -9,7 +9,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const UUID = /^[0-9a-f-]{36}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * API bukti pengujian.
@@ -35,18 +35,17 @@ export async function POST(req: Request) {
 
   if (!isi?.aksi) return NextResponse.json({ pesan: "aksi wajib" }, { status: 400 });
 
-  /*
-   * PIMPINAN hanya melihat. Peran itu ada untuk membaca laporan, bukan
-   * mengubah data pengujian — dan bukti termasuk data pengujian.
-   */
-  if (saya.peran === "PIMPINAN" && isi.aksi !== "daftar" && isi.aksi !== "lihat") {
-    return NextResponse.json({ pesan: "Peran Pimpinan hanya dapat melihat" }, { status: 403 });
+  if (!isi.projectId || !/^PRJ-\d{3,}$/.test(isi.projectId)) {
+    return NextResponse.json({ pesan: "ID proyek wajib dan harus sah." }, { status: 400 });
   }
-
-  if (isi.projectId) {
-    if (!(await bolehAksesProyek(saya, isi.projectId))) {
-      return NextResponse.json({ pesan: "Tidak punya akses ke proyek ini" }, { status: 403 });
-    }
+  if (!(await bolehAksesProyek(saya, isi.projectId))) {
+    return NextResponse.json({ pesan: "Tidak punya akses ke proyek ini" }, { status: 403 });
+  }
+  if (isi.aksi !== "daftar" && !bolehUbahEksekusi(saya.peran)) {
+    return NextResponse.json({ pesan: "Peran Pimpinan hanya dapat melihat." }, { status: 403 });
+  }
+  if (isi.aksi === "hapus" && !bolehKelolaProyek(saya.peran)) {
+    return NextResponse.json({ pesan: "Hanya Admin atau Internal PSII yang dapat menghapus bukti." }, { status: 403 });
   }
 
   try {
@@ -82,14 +81,22 @@ export async function POST(req: Request) {
     if (isi.aksi === "catat") {
       const { projectId, scenarioId, namaBerkas, mime, ukuran } = isi;
       const kunci = (isi as unknown as { kunci?: string }).kunci;
-      if (!projectId || !scenarioId || !kunci) {
+      if (!projectId || !scenarioId || !UUID.test(scenarioId) || !kunci) {
         return NextResponse.json({ pesan: "projectId, scenarioId, dan kunci wajib" }, { status: 400 });
+      }
+      if (!mime || !jenisDikenal(mime) || (typeof ukuran === "number" && (ukuran < 0 || ukuran > BATAS_BUKTI))) {
+        return NextResponse.json({ pesan: "Tipe atau ukuran bukti tidak sah." }, { status: 400 });
       }
       if (!kunci.startsWith(`bukti/${projectId}/${scenarioId}/`)) {
         // Kunci yang tidak berada di bawah proyek+skenario ini berarti ada yang
         // mencoba menyisipkan bukti milik orang lain ke skenarionya sendiri.
         return NextResponse.json({ pesan: "Kunci berkas tidak sesuai skenario" }, { status: 400 });
       }
+
+      const [s] = (await klienMentah.unsafe(
+        `SELECT id FROM th_scenarios WHERE id = $1::uuid AND project_id = $2`, [scenarioId, projectId],
+      )) as unknown as { id: string }[];
+      if (!s) return NextResponse.json({ pesan: "Skenario tidak ada di proyek ini." }, { status: 404 });
 
       if (!(await objekAda(kunci))) {
         return NextResponse.json({
@@ -121,6 +128,10 @@ export async function POST(req: Request) {
       if (!scenarioId || !UUID.test(scenarioId)) {
         return NextResponse.json({ pesan: "scenarioId tidak sah" }, { status: 400 });
       }
+      const [s] = (await klienMentah.unsafe(
+        `SELECT id FROM th_scenarios WHERE id = $1::uuid AND project_id = $2`, [scenarioId, isi.projectId],
+      )) as unknown as { id: string }[];
+      if (!s) return NextResponse.json({ pesan: "Skenario tidak ditemukan di proyek ini." }, { status: 404 });
       const baris = (await klienMentah.unsafe(
         `SELECT id, path, nama_asli, tipe, ukuran, diunggah_pada
          FROM th_evidence WHERE scenario_id = $1::uuid ORDER BY diunggah_pada`,
@@ -145,7 +156,7 @@ export async function POST(req: Request) {
       const [b] = (await klienMentah.unsafe(
         `SELECT e.path, e.nama_asli, s.project_id
          FROM th_evidence e JOIN th_scenarios s ON s.id = e.scenario_id
-         WHERE e.id = $1::uuid`, [evidenceId],
+         WHERE e.id = $1::uuid AND s.project_id = $2`, [evidenceId, projectId],
       )) as unknown as { path: string; nama_asli: string | null; project_id: string }[];
       if (!b) return NextResponse.json({ pesan: "Bukti tidak ditemukan" }, { status: 404 });
 

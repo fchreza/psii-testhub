@@ -12,9 +12,12 @@ import { NextResponse, type NextRequest } from "next/server";
  * Dua lapis dengan pembagian tugas yang jelas: yang ini murah dan cepat, yang
  * di dalam yang menentukan.
  */
-const PUBLIK = ["/masuk", "/api/v1/masuk"];
+const PUBLIK = [
+  "/masuk", "/api/v1/masuk",
+  "/pulihkan-sandi", "/api/v1/sandi/lupa", "/api/v1/sandi/atur",
+];
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (PUBLIK.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
@@ -29,7 +32,7 @@ export function middleware(req: NextRequest) {
     url.pathname = "/masuk";
     // Simpan tujuan supaya setelah masuk pengguna kembali ke halaman yang tadi
     // dibuka, bukan dilempar ke beranda.
-    if (pathname !== "/") url.searchParams.set("lanjut", pathname);
+    if (pathname !== "/") url.searchParams.set("lanjut", pathname + req.nextUrl.search);
     return NextResponse.redirect(url);
   }
 

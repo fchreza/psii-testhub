@@ -23,7 +23,7 @@ async function main() {
   const sandi = sandiAcak();
   if (ada) {
     await klienMentah.unsafe(
-      `UPDATE th_users SET sandi_hash = $1, peran = 'ADMIN', aktif = true WHERE id = $2::uuid`,
+      `UPDATE th_users SET sandi_hash = $1, peran = 'ADMIN', aktif = true, sesi_versi = sesi_versi + 1 WHERE id = $2::uuid`,
       [hashSandi(sandi), ada.id],
     );
     console.log("  akun sudah ada — sandi diperbarui, peran dipastikan ADMIN");

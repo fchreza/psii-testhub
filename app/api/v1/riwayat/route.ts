@@ -4,7 +4,7 @@ import { wajibMasukApi, bolehAksesProyek } from "@/lib/gerbang";
 
 export const dynamic = "force-dynamic";
 
-const UUID = /^[0-9a-f-]{36}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Riwayat perubahan satu skenario (NFR-1: jejak audit harus bisa dilihat). */
 export async function GET(req: Request) {

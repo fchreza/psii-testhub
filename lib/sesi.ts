@@ -62,33 +62,43 @@ export function sandiAcak(panjang = 12): string {
   return [...randomBytes(panjang)].map((x) => abjad[x % abjad.length]).join("");
 }
 
-/** Tanda tangan isi cookie: `<userId>.<kedaluwarsa>.<tandaTangan>` */
+/** Tanda tangan isi cookie: `<userId>.<versiSesi>.<kedaluwarsa>.<tandaTangan>` */
 function tandatangani(isi: string): string {
   return createHmac("sha256", kunci()).update(isi).digest("hex").slice(0, 32);
 }
 
-export function buatToken(userId: string): string {
+export function buatToken(userId: string, versi = 0): string {
   const kedaluwarsa = Math.floor(Date.now() / 1000) + UMUR_DETIK;
-  const isi = `${userId}.${kedaluwarsa}`;
+  const isi = `${userId}.${versi}.${kedaluwarsa}`;
   return `${isi}.${tandatangani(isi)}`;
 }
 
-export function bacaToken(token: string | undefined): string | null {
+export function bacaToken(token: string | undefined): { userId: string; versi: number } | null {
   if (!token) return null;
   const bagian = token.split(".");
-  if (bagian.length !== 3) return null;
-  const [userId, kedaluwarsaStr, tanda] = bagian;
-  const benar = tandatangani(`${userId}.${kedaluwarsaStr}`);
+  let userId: string, versi: number, kedaluwarsaStr: string, tanda: string, isi: string;
+  if (bagian.length === 3) {
+    // Cookie versi lama tetap dapat dipakai sampai kedaluwarsa; versi default 0.
+    [userId, kedaluwarsaStr, tanda] = bagian;
+    versi = 0; isi = `${userId}.${kedaluwarsaStr}`;
+  } else if (bagian.length === 4) {
+    const [versiStr] = bagian.slice(1, 2);
+    [userId, , kedaluwarsaStr, tanda] = bagian;
+    versi = Number(versiStr);
+    if (!Number.isSafeInteger(versi) || versi < 0) return null;
+    isi = `${userId}.${versi}.${kedaluwarsaStr}`;
+  } else return null;
+  const benar = tandatangani(isi);
   if (tanda.length !== benar.length) return null;
   if (!timingSafeEqual(Buffer.from(tanda), Buffer.from(benar))) return null;
   const kedaluwarsa = Number(kedaluwarsaStr);
   if (!Number.isFinite(kedaluwarsa) || kedaluwarsa < Math.floor(Date.now() / 1000)) return null;
-  return userId;
+  return { userId, versi };
 }
 
-export async function pasangCookie(userId: string) {
+export async function pasangCookie(userId: string, versi = 0) {
   const c = await cookies();
-  c.set(NAMA_COOKIE, buatToken(userId), {
+  c.set(NAMA_COOKIE, buatToken(userId, versi), {
     httpOnly: true,      // JavaScript di halaman tidak boleh membacanya
     sameSite: "lax",     // tidak ikut dari situs lain, tapi ikut saat dibuka dari tautan
     secure: process.env.NODE_ENV === "production",
@@ -103,11 +113,10 @@ export async function hapusCookie() {
 }
 
 /** Sesi saat ini, atau null. Tidak melempar kalau kunci belum diatur. */
-export async function sesiSekarang(): Promise<{ userId: string } | null> {
+export async function sesiSekarang(): Promise<{ userId: string; versi: number } | null> {
   try {
     const c = await cookies();
-    const id = bacaToken(c.get(NAMA_COOKIE)?.value);
-    return id ? { userId: id } : null;
+    return bacaToken(c.get(NAMA_COOKIE)?.value);
   } catch {
     return null;
   }
