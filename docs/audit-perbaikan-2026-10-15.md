@@ -56,3 +56,8 @@ Commit lokal `5b18733` berisi seluruh perbaikan dan lulus `npm run typecheck`, b
 ### Pembaruan keputusan rilis — 15 Oktober 2026, 14:32 WIB
 
 Catatan status sebelumnya yang menahan push karena konfirmasi database kini superseded: pemilik mengonfirmasi `DATABASE_URL` production menunjuk ke `psii_testhub` dan meminta rilis inti sekarang. Nilai secret tetap tidak dibaca atau ditampilkan. Pemilik menunda konfigurasi email reset; `RESEND_API_KEY` dan `RESEND_FROM` akan ditambahkan pada tahap berikutnya, sehingga alur permintaan reset belum dapat mengirim email sampai konfigurasi tersebut tersedia. `APP_URL` production telah dikonfigurasi. Pertahankan commit aplikasi `5b18733` dan dokumentasi `641a26e`, lalu push dan verifikasi deployment production.
+
+
+### Hasil verifikasi production — 15 Oktober 2026, 14:35 WIB
+
+Deployment commit `e8f679b` berstatus `READY` pada target production dan alias canonical `https://psii-testhub.vercel.app` terpasang. Pemeriksaan HTTP mengembalikan 200; `/` diarahkan ke `/masuk`, akses anonim ke `/dashboard/admin/pengguna` diarahkan ke login, dan `GET /api/v1/pengguna` mengembalikan 401. Endpoint publik `POST /api/v1/sandi/lupa` mengembalikan 503 karena konfigurasi email memang ditunda atas pilihan pemilik; tidak ada email yang dikirim. Pemilik mengonfirmasi `DATABASE_URL` production mengarah ke database `psii_testhub`; nilainya tidak dibaca atau ditampilkan. Domain production lain, provider email, dan API key akan ditinjau saat fitur pemulihan sandi diaktifkan.
