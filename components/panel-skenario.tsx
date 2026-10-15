@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn, STATUS_UJI, labelStatus } from "@/lib/format";
 import { capWaktuID } from "@/lib/waktu";
 import { BuktiSkenario } from "./bukti-skenario";
@@ -29,19 +29,33 @@ export function PanelSkenario({
   skenario, projectId, bolehUbah, bolehKelolaSkenario, onTutup, onUbah,
 }: {
   skenario: Skenario; projectId: string; bolehUbah: boolean; bolehKelolaSkenario: boolean;
-  onTutup: () => void; onUbah: (tambalan: Partial<Skenario>) => void;
+  onTutup: () => void; onUbah: (tambalan: Partial<Skenario>) => Promise<boolean>;
 }) {
   const [riwayat, setRiwayat] = useState<Riwayat[]>([]);
+  const [riwayatMuat, setRiwayatMuat] = useState(true);
+  const [riwayatGalat, setRiwayatGalat] = useState<string | null>(null);
+  const drafKotor = useRef(new Set<string>());
+  const [adaDrafKotor, setAdaDrafKotor] = useState(false);
   const st = STATUS_UJI[skenario.status as keyof typeof STATUS_UJI] ?? STATUS_UJI.PENDING;
+
+  const tandaiDraf = (kunci: string, kotor: boolean) => {
+    if (kotor) drafKotor.current.add(kunci);
+    else drafKotor.current.delete(kunci);
+    setAdaDrafKotor(drafKotor.current.size > 0);
+  };
+  const tutupAman = () => {
+    if (drafKotor.current.size > 0 && !window.confirm("Ada teks yang belum tersimpan. Tutup panel dan buang draf tersebut?")) return;
+    onTutup();
+  };
 
   // Escape menutup panel. KENAPA TIDAK DIBLOKIR SAAT FOKUS DI ISIAN:
   // setelah mengetik, fokus MEMANG ada di isian — kalau diblokir, Escape mati
   // tepat saat paling dibutuhkan.
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onTutup(); };
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") tutupAman(); };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [onTutup]);
+  }, [tutupAman]);
 
   /*
    * Dorong isi halaman ke kiri selama panel ini terbuka.
@@ -61,18 +75,27 @@ export function PanelSkenario({
 
   useEffect(() => {
     let batal = false;
+    setRiwayatMuat(true);
+    setRiwayatGalat(null);
     void (async () => {
-      const r = await fetch(`/api/v1/riwayat?scenarioId=${skenario.id}`);
-      if (!r.ok || batal) return;
-      const j = await r.json();
-      setRiwayat(j.riwayat ?? []);
+      try {
+        const r = await fetch(`/api/v1/riwayat?scenarioId=${skenario.id}`);
+        const j = await r.json().catch(() => ({}));
+        if (batal) return;
+        if (!r.ok) { setRiwayatGalat(j.pesan ?? "Riwayat tidak dapat dimuat."); return; }
+        setRiwayat(j.riwayat ?? []);
+      } catch {
+        if (!batal) setRiwayatGalat("Tidak dapat memuat riwayat. Periksa koneksi lalu coba lagi.");
+      } finally {
+        if (!batal) setRiwayatMuat(false);
+      }
     })();
     return () => { batal = true; };
   }, [skenario.id, skenario.diubah_pada]);
 
   return (
     <>
-      <button type="button" aria-label="Tutup panel" onClick={onTutup}
+      <button type="button" aria-label="Tutup panel" onClick={tutupAman}
         className="fixed inset-0 z-30 bg-tinta/10" />
 
       <aside role="dialog" aria-label={`Detail ${skenario.kode}`}
@@ -89,8 +112,9 @@ export function PanelSkenario({
               <h2 className="mt-0.5 text-[18px] font-bold leading-snug tracking-tight text-tinta">
                 {skenario.judul}
               </h2>
+              {adaDrafKotor && <p role="status" className="mt-1 text-[12px] font-medium text-tertunda">Ada teks yang belum tersimpan</p>}
             </div>
-            <button type="button" onClick={onTutup} aria-label="Tutup"
+            <button type="button" onClick={tutupAman} aria-label="Tutup"
               className="shrink-0 rounded px-2 py-1 text-[13px] text-tinta-3 hover:bg-kanvas hover:text-tinta">
               Tutup
             </button>
@@ -100,7 +124,8 @@ export function PanelSkenario({
         <div className="space-y-5 px-6 py-5">
           <Bagian judul="Judul skenario">
             <Teks nilai={skenario.judul} kosong="Judul belum diisi"
-              bolehUbah={bolehKelolaSkenario} onSimpan={(v) => onUbah({ judul: v })} />
+              bolehUbah={bolehKelolaSkenario} onSimpan={(v) => onUbah({ judul: v })} maksimal={200}
+              onDrafKotor={(kotor) => tandaiDraf("judul", kotor)} />
           </Bagian>
 
           {/* Sifat: label kiri kecil dan redup, nilai kanan lebih terang.
@@ -132,17 +157,20 @@ export function PanelSkenario({
 
           <Bagian judul="Langkah pengujian">
             <Teks nilai={skenario.langkah_pengujian} kosong="Belum diisi"
-              bolehUbah={bolehKelolaSkenario} onSimpan={(v) => onUbah({ langkah_pengujian: v })} />
+              bolehUbah={bolehKelolaSkenario} onSimpan={(v) => onUbah({ langkah_pengujian: v })}
+              onDrafKotor={(kotor) => tandaiDraf("langkah", kotor)} />
           </Bagian>
 
           <Bagian judul="Hasil yang diharapkan">
             <Teks nilai={skenario.hasil_diharapkan} kosong="Belum diisi"
-              bolehUbah={bolehKelolaSkenario} onSimpan={(v) => onUbah({ hasil_diharapkan: v })} />
+              bolehUbah={bolehKelolaSkenario} onSimpan={(v) => onUbah({ hasil_diharapkan: v })}
+              onDrafKotor={(kotor) => tandaiDraf("hasil-diharapkan", kotor)} />
           </Bagian>
 
           <Bagian judul="Hasil aktual / temuan">
             <Teks nilai={skenario.hasil_aktual} kosong="Catat apa yang benar-benar terjadi saat pengujian"
-              bolehUbah={bolehUbah} onSimpan={(v) => onUbah({ hasil_aktual: v })} />
+              bolehUbah={bolehUbah} onSimpan={(v) => onUbah({ hasil_aktual: v })}
+              onDrafKotor={(kotor) => tandaiDraf("hasil-aktual", kotor)} />
           </Bagian>
 
           <Bagian judul="Catatan tindak lanjut">
@@ -150,7 +178,8 @@ export function PanelSkenario({
               kosong={skenario.status === "FAIL" || skenario.status === "BLOCKED"
                 ? "WAJIB diisi untuk status Gagal atau Tertunda" : "Belum ada catatan"}
               bolehUbah={bolehUbah} onSimpan={(v) => onUbah({ catatan_tindak_lanjut: v })}
-              sorot={skenario.status === "FAIL" || skenario.status === "BLOCKED"} />
+              sorot={skenario.status === "FAIL" || skenario.status === "BLOCKED"}
+              onDrafKotor={(kotor) => tandaiDraf("tindak-lanjut", kotor)} />
           </Bagian>
 
           <div className="border-t border-garis pt-4">
@@ -163,14 +192,25 @@ export function PanelSkenario({
             <p className="mb-2 text-[12.5px] font-semibold uppercase tracking-wide text-tinta-3">
               Riwayat perubahan
             </p>
-            {riwayat.length === 0 ? (
+            {riwayatMuat ? (
+              <p className="text-[13px] text-tinta-3">Memuat riwayat…</p>
+            ) : riwayatGalat ? (
+              <p role="status" className="text-[13px] text-gagal">{riwayatGalat}</p>
+            ) : riwayat.length === 0 ? (
               <p className="text-[13px] text-tinta-3">Belum ada perubahan tercatat</p>
             ) : (
               <ul className="space-y-2">
                 {riwayat.map((x) => (
                   <li key={x.id} className="border-l-2 border-garis pl-3">
                     <p className="text-[13px] text-tinta-2">
-                      {x.aksi === "ubah_status" ? "Status" : x.aksi === "unggah_bukti" ? "Bukti" : "Catatan"}
+                      {{
+                        ubah_status: "Status",
+                        ubah_skenario: "Perubahan skenario",
+                        unggah_bukti: "Bukti diunggah",
+                        hapus_bukti: "Bukti dihapus",
+                        tambah_skenario: "Skenario dibuat",
+                        hapus_skenario: "Skenario dihapus",
+                      }[x.aksi] ?? "Perubahan"}
                       {x.nilai_lama && x.nilai_baru && x.kolom === "status" ? (
                         <>: {labelStatus(x.nilai_lama)} → <strong className="font-semibold">{labelStatus(x.nilai_baru)}</strong></>
                       ) : x.nilai_baru ? (
@@ -210,13 +250,30 @@ function Bagian({ judul, children }: { judul: string; children: React.ReactNode 
 }
 
 function Teks({
-  nilai, kosong, bolehUbah, onSimpan, sorot,
+  nilai, kosong, bolehUbah, onSimpan, sorot, maksimal = 20000, onDrafKotor,
 }: {
   nilai: string | null; kosong: string; bolehUbah: boolean;
-  onSimpan: (v: string) => void; sorot?: boolean;
+  onSimpan: (v: string) => Promise<boolean>; sorot?: boolean; maksimal?: number;
+  onDrafKotor: (kotor: boolean) => void;
 }) {
   const [buka, setBuka] = useState(false);
   const [draf, setDraf] = useState(nilai ?? "");
+  const [sibuk, setSibuk] = useState(false);
+  const kunciSimpan = useRef(false);
+  const batalRef = useRef(false);
+
+  async function simpanDraf() {
+    if (kunciSimpan.current) return;
+    if (draf === (nilai ?? "")) { onDrafKotor(false); setBuka(false); return; }
+    kunciSimpan.current = true;
+    setSibuk(true);
+    try {
+      if (await onSimpan(draf)) { onDrafKotor(false); setBuka(false); }
+    } finally {
+      kunciSimpan.current = false;
+      setSibuk(false);
+    }
+  }
 
   if (!bolehUbah) {
     return (
@@ -229,7 +286,7 @@ function Teks({
 
   if (!buka) {
     return (
-      <button type="button" onClick={() => { setDraf(nilai ?? ""); setBuka(true); }}
+      <button type="button" onClick={() => { batalRef.current = false; onDrafKotor(false); setDraf(nilai ?? ""); setBuka(true); }}
         className={cn("block w-full whitespace-pre-wrap rounded px-2 py-1.5 text-left text-[13.5px] leading-relaxed hover:bg-kanvas",
           nilai ? "text-tinta-2" : "text-tinta-3",
           sorot && !nilai && "ring-1 ring-gagal/40")}>
@@ -239,12 +296,29 @@ function Teks({
   }
 
   return (
-    <textarea autoFocus rows={4} value={draf}
-      onChange={(e) => setDraf(e.target.value)}
-      onBlur={() => { setBuka(false); if (draf !== (nilai ?? "")) onSimpan(draf); }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") { e.preventDefault(); setDraf(nilai ?? ""); setBuka(false); }
-      }}
-      className="w-full rounded border border-aksi bg-kartu px-2 py-1.5 text-[13.5px] leading-relaxed text-tinta-2 outline-none" />
+    <div onBlur={(e) => {
+      const tujuan = e.relatedTarget;
+      if (tujuan instanceof Node && e.currentTarget.contains(tujuan)) return;
+      if (!batalRef.current && draf !== (nilai ?? "")) void simpanDraf();
+    }}>
+      <textarea autoFocus rows={4} value={draf} maxLength={maksimal} disabled={sibuk}
+        onChange={(e) => { setDraf(e.target.value); onDrafKotor(e.target.value !== (nilai ?? "")); }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); batalRef.current = true; onDrafKotor(false); setDraf(nilai ?? ""); setBuka(false); }
+          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void simpanDraf(); }
+        }}
+        className="w-full rounded border border-aksi bg-kartu px-2 py-1.5 text-[13.5px] leading-relaxed text-tinta-2 outline-none" />
+      <div className="mt-1.5 flex items-center gap-2">
+        <button type="button" onClick={() => void simpanDraf()} disabled={sibuk || draf === (nilai ?? "")}
+          className="rounded bg-aksi px-2.5 py-1 text-[12px] font-semibold text-white disabled:opacity-50">
+          {sibuk ? "Menyimpan…" : "Simpan"}
+        </button>
+        <button type="button" onClick={() => { batalRef.current = true; onDrafKotor(false); setDraf(nilai ?? ""); setBuka(false); }} disabled={sibuk}
+          className="rounded border border-garis px-2.5 py-1 text-[12px] text-tinta-2 disabled:opacity-50">
+          Batal
+        </button>
+        <span className="text-[11px] text-tinta-3">Ctrl+Enter untuk menyimpan</span>
+      </div>
+    </div>
   );
 }

@@ -7,6 +7,18 @@ export const dynamic = "force-dynamic";
 const LINGKUNGAN_SAH = ["DEV", "SIT", "UAT", "PROD"];
 const TAHAP_SAH = ["PERSIAPAN", "SIT", "UAT", "WAITING_SIGNOFF", "SELESAI"];
 
+function tanggalInput(nilai: unknown, label: string): { nilai: string | null; pesan?: string } {
+  if (nilai === undefined || nilai === null || nilai === "") return { nilai: null };
+  if (typeof nilai !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(nilai)) {
+    return { nilai: null, pesan: `Tanggal ${label} tidak sah.` };
+  }
+  const tanggal = new Date(`${nilai}T00:00:00.000Z`);
+  if (Number.isNaN(tanggal.getTime()) || tanggal.toISOString().slice(0, 10) !== nilai) {
+    return { nilai: null, pesan: `Tanggal ${label} tidak sah.` };
+  }
+  return { nilai };
+}
+
 export async function POST(req: Request) {
   const auth = await wajibMasukApi();
   if ("tolak" in auth) return auth.tolak;
@@ -25,10 +37,30 @@ export async function POST(req: Request) {
 
   try {
     if (isi.aksi === "tambah") {
+      if (isi.nama !== undefined && typeof isi.nama !== "string") {
+        return NextResponse.json({ pesan: "Nama proyek harus berupa teks." }, { status: 400 });
+      }
+      for (const [kunci, label] of [["modulAplikasi", "Modul/aplikasi"], ["unitBisnis", "Unit bisnis"], ["ruangLingkup", "Ruang lingkup"], ["sumberAcuan", "Sumber acuan"], ["dasarRegulasi", "Dasar regulasi"], ["alamatServer", "Alamat server"]] as const) {
+        const nilai = isi[kunci];
+        if (nilai !== undefined && nilai !== null && typeof nilai !== "string") {
+          return NextResponse.json({ pesan: `${label} harus berupa teks.` }, { status: 400 });
+        }
+      }
       const nama = (isi.nama ?? "").trim().slice(0, 200);
       if (!nama) return NextResponse.json({ pesan: "Nama proyek wajib diisi." }, { status: 400 });
       const lingkungan = isi.lingkungan ?? "DEV";
       if (!LINGKUNGAN_SAH.includes(lingkungan)) return NextResponse.json({ pesan: "Lingkungan uji tidak sah." }, { status: 400 });
+      const tahunAnggaran = isi.tahunAnggaran ?? null;
+      if (tahunAnggaran !== null && (!Number.isInteger(tahunAnggaran) || tahunAnggaran < 1900 || tahunAnggaran > 2200)) {
+        return NextResponse.json({ pesan: "Tahun anggaran harus berupa tahun yang sah (1900–2200)." }, { status: 400 });
+      }
+      const mulai = tanggalInput(isi.tanggalMulai, "mulai");
+      const selesai = tanggalInput(isi.targetSelesai, "target selesai");
+      if (mulai.pesan) return NextResponse.json({ pesan: mulai.pesan }, { status: 400 });
+      if (selesai.pesan) return NextResponse.json({ pesan: selesai.pesan }, { status: 400 });
+      if (mulai.nilai && selesai.nilai && selesai.nilai < mulai.nilai) {
+        return NextResponse.json({ pesan: "Target selesai tidak boleh sebelum tanggal mulai." }, { status: 400 });
+      }
 
       const id = await klienMentah.begin(async (tx) => {
         await tx.unsafe(`SELECT pg_advisory_xact_lock(hashtext('psii-testhub-project-number'))`);
@@ -51,9 +83,9 @@ export async function POST(req: Request) {
             (isi.dasarRegulasi ?? "").trim().slice(0, 200) || null,
             lingkungan,
             (isi.alamatServer ?? "").trim().slice(0, 300) || null,
-            isi.tahunAnggaran || null,
-            isi.tanggalMulai || null,
-            isi.targetSelesai || null],
+            tahunAnggaran,
+            mulai.nilai,
+            selesai.nilai],
         );
         return projectId;
       });

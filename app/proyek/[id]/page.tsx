@@ -83,7 +83,7 @@ export default async function HalamanProyek({
            s.status, s.catatan_tindak_lanjut, s.siap_retest, s.module_id, s.urutan,
            s.penguji_id, u.nama AS penguji_nama,
            (SELECT count(*) FROM th_evidence e WHERE e.scenario_id = s.id)::int AS jumlah_bukti,
-           s.diubah_pada
+           s.diubah_pada, s.xmin::text AS versi
     FROM th_scenarios s
     LEFT JOIN th_users u ON u.id = s.penguji_id
     WHERE s.project_id = $1 AND s.fase = $2
@@ -208,6 +208,7 @@ export default async function HalamanProyek({
         </div>
 
         <TabelSkenario
+          key={`${id}:${fase}`}
           projectId={id}
           fase={fase}
           skenarioAwal={skenario}

@@ -30,7 +30,9 @@ async function kecilkan(berkas: File): Promise<File> {
   // Sudah cukup kecil — tidak perlu diapa-apakan.
   if (berkas.size <= 500 * 1024) return berkas;
 
-  const bitmap = await createImageBitmap(berkas);
+  let bitmap: ImageBitmap;
+  try { bitmap = await createImageBitmap(berkas); }
+  catch { return berkas; }
   const MAX = 1600;
   const skala = Math.min(1, MAX / Math.max(bitmap.width, bitmap.height));
   const w = Math.round(bitmap.width * skala);
@@ -67,14 +69,18 @@ export function BuktiSkenario({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const ambil = useCallback(async () => {
-    const r = await fetch("/api/v1/bukti", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ aksi: "daftar", projectId, scenarioId }),
-    });
-    setMuat(false);
-    if (!r.ok) return;
-    const j = await r.json();
-    setDaftar(j.bukti ?? []);
+    setGalat(null);
+    try {
+      const r = await fetch("/api/v1/bukti", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aksi: "daftar", projectId, scenarioId }),
+      });
+      const j = await r.json().catch(() => ({ pesan: "Respons server tidak dapat dibaca." }));
+      if (!r.ok) { setGalat(j.pesan ?? "Gagal memuat daftar bukti."); return; }
+      setDaftar(j.bukti ?? []);
+    } catch {
+      setGalat("Tidak dapat memuat bukti. Periksa koneksi lalu coba lagi.");
+    } finally { setMuat(false); }
   }, [projectId, scenarioId]);
 
   useEffect(() => { void ambil(); }, [ambil]);
@@ -145,18 +151,20 @@ export function BuktiSkenario({
   }
 
   async function hapus(b: Bukti) {
+    if (!window.confirm(`Hapus bukti “${b.nama_asli ?? "berkas"}”? Tindakan ini tidak dapat dibatalkan.`)) return;
     setGalat(null);
     setSibuk(b.id);
-    const r = await fetch("/api/v1/bukti", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ aksi: "hapus", evidenceId: b.id, projectId }),
-    });
-    setSibuk(null);
-    if (!r.ok) {
-      const j = await r.json().catch(() => ({ pesan: "Gagal menghapus" }));
-      setGalat(j.pesan); return;
-    }
-    setDaftar((d) => d.filter((x) => x.id !== b.id));
+    try {
+      const r = await fetch("/api/v1/bukti", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aksi: "hapus", evidenceId: b.id, projectId }),
+      });
+      const j = await r.json().catch(() => ({ pesan: "Respons server tidak dapat dibaca." }));
+      if (!r.ok) { setGalat(j.pesan ?? "Gagal menghapus bukti."); return; }
+      setDaftar((d) => d.filter((x) => x.id !== b.id));
+    } catch {
+      setGalat("Tidak dapat terhubung. Bukti belum dihapus.");
+    } finally { setSibuk(null); }
   }
 
   const gambar = daftar.filter((b) => b.tipe?.startsWith("image/"));
@@ -195,6 +203,10 @@ export function BuktiSkenario({
 
       {muat ? (
         <p className="text-[13px] text-tinta-3">Memuat bukti…</p>
+      ) : galat && daftar.length === 0 ? (
+        <p className="rounded border border-dashed border-garis px-3 py-4 text-center text-[13px] text-tinta-3">
+          Daftar bukti belum bisa ditampilkan.
+        </p>
       ) : daftar.length === 0 ? (
         <p className="rounded border border-dashed border-garis px-3 py-4 text-center text-[13px] text-tinta-3">
           Belum ada bukti

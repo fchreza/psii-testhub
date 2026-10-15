@@ -60,9 +60,12 @@ export async function POST(req: Request) {
           pesan: `Jenis berkas tidak didukung. Yang boleh: ${Object.values(JENIS_BUKTI).join(", ")}`,
         }, { status: 400 });
       }
-      if (typeof ukuran === "number" && ukuran > BATAS_BUKTI) {
+      const melebihiBatas = typeof ukuran === "number" && ukuran > BATAS_BUKTI;
+      if (typeof ukuran !== "number" || !Number.isInteger(ukuran) || ukuran < 0 || melebihiBatas) {
         return NextResponse.json({
-          pesan: `Berkas ${(ukuran / 1024 / 1024).toFixed(1)} MB melebihi batas 10 MB.`,
+          pesan: melebihiBatas
+            ? `Berkas ${(ukuran / 1024 / 1024).toFixed(1)} MB melebihi batas 10 MB.`
+            : "Ukuran berkas tidak sah.",
         }, { status: 400 });
       }
 
@@ -81,11 +84,14 @@ export async function POST(req: Request) {
     if (isi.aksi === "catat") {
       const { projectId, scenarioId, namaBerkas, mime, ukuran } = isi;
       const kunci = (isi as unknown as { kunci?: string }).kunci;
-      if (!projectId || !scenarioId || !UUID.test(scenarioId) || !kunci) {
+      if (!projectId || !scenarioId || !UUID.test(scenarioId) || typeof kunci !== "string" || !kunci) {
         return NextResponse.json({ pesan: "projectId, scenarioId, dan kunci wajib" }, { status: 400 });
       }
-      if (!mime || !jenisDikenal(mime) || (typeof ukuran === "number" && (ukuran < 0 || ukuran > BATAS_BUKTI))) {
+      if (!mime || !jenisDikenal(mime) || typeof ukuran !== "number" || !Number.isInteger(ukuran) || ukuran < 0 || ukuran > BATAS_BUKTI) {
         return NextResponse.json({ pesan: "Tipe atau ukuran bukti tidak sah." }, { status: 400 });
+      }
+      if (namaBerkas !== undefined && typeof namaBerkas !== "string") {
+        return NextResponse.json({ pesan: "Nama berkas tidak sah." }, { status: 400 });
       }
       if (!kunci.startsWith(`bukti/${projectId}/${scenarioId}/`)) {
         // Kunci yang tidak berada di bawah proyek+skenario ini berarti ada yang
@@ -154,10 +160,10 @@ export async function POST(req: Request) {
         return NextResponse.json({ pesan: "evidenceId tidak sah" }, { status: 400 });
       }
       const [b] = (await klienMentah.unsafe(
-        `SELECT e.path, e.nama_asli, s.project_id
+        `SELECT e.path, e.nama_asli, s.project_id, s.id AS scenario_id
          FROM th_evidence e JOIN th_scenarios s ON s.id = e.scenario_id
          WHERE e.id = $1::uuid AND s.project_id = $2`, [evidenceId, projectId],
-      )) as unknown as { path: string; nama_asli: string | null; project_id: string }[];
+      )) as unknown as { path: string; nama_asli: string | null; project_id: string; scenario_id: string }[];
       if (!b) return NextResponse.json({ pesan: "Bukti tidak ditemukan" }, { status: 404 });
 
       if (!(await bolehAksesProyek(saya, b.project_id))) {
@@ -177,9 +183,9 @@ export async function POST(req: Request) {
       }
 
       await klienMentah.unsafe(
-        `INSERT INTO th_audit_logs (user_id, project_id, aksi, kolom, nilai_lama)
-         VALUES ($1::uuid,$2,'hapus_bukti','bukti',$3)`,
-        [saya.id, b.project_id, b.nama_asli ?? b.path],
+        `INSERT INTO th_audit_logs (user_id, project_id, scenario_id, aksi, kolom, nilai_lama)
+         VALUES ($1::uuid,$2,$3::uuid,'hapus_bukti','bukti',$4)`,
+        [saya.id, b.project_id, b.scenario_id, b.nama_asli ?? b.path],
       );
 
       if (projectId) revalidatePath(`/proyek/${projectId}`);

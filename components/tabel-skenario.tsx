@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn, STATUS_UJI, labelStatus } from "@/lib/format";
 import { tanggalID } from "@/lib/waktu";
 import { PanelSkenario } from "./panel-skenario";
@@ -11,7 +11,7 @@ export type Skenario = {
   status: string; catatan_tindak_lanjut: string | null;
   siap_retest: boolean; module_id: string | null; urutan: number;
   penguji_id: string | null; penguji_nama: string | null;
-  jumlah_bukti: number; diubah_pada: string;
+  jumlah_bukti: number; diubah_pada: string; versi: string;
 };
 export type Modul = { id: string; kode: string; nama: string; urutan: number };
 export type Orang = { id: string; nama: string; peran: string };
@@ -34,78 +34,120 @@ export function TabelSkenario({
   modul: Modul[]; orang: Orang[]; sayaId: string; bolehUbah: boolean; bolehKelolaSkenario: boolean;
 }) {
   const [data, setData] = useState<Skenario[]>(skenarioAwal);
+  const dataRef = useRef<Skenario[]>(skenarioAwal);
+  const antreanSimpan = useRef(new Map<string, Promise<boolean>>());
   const [pesan, setPesan] = useState<{ jenis: "galat" | "info"; teks: string } | null>(null);
   const [sibuk, setSibuk] = useState(false);
+  const [hapusSibuk, setHapusSibuk] = useState<string | null>(null);
   const [saring, setSaring] = useState({ status: "", modul: "", penguji: "", cari: "" });
   // Skenario yang panelnya sedang terbuka. Disimpan sebagai ID, bukan objeknya:
   // objek yang disimpan akan basi begitu datanya diubah di tempat.
   const [bukaPanel, setBukaPanel] = useState<string | null>(null);
 
+  useEffect(() => {
+    dataRef.current = skenarioAwal;
+    setData(skenarioAwal);
+    setBukaPanel(null);
+  }, [projectId, fase, skenarioAwal]);
+
+  const perbaruiData = (ubahData: (baris: Skenario[]) => Skenario[]) => {
+    const berikutnya = ubahData(dataRef.current);
+    dataRef.current = berikutnya;
+    setData(berikutnya);
+  };
+
   const ubah = (id: string, tambalan: Partial<Skenario>) =>
-    setData((d) => d.map((x) => (x.id === id ? { ...x, ...tambalan } : x)));
+    perbaruiData((baris) => baris.map((x) => (x.id === id ? { ...x, ...tambalan } : x)));
 
-  /** Simpan satu perubahan ke server. */
-  const simpan = async (id: string, tambalan: Record<string, unknown>) => {
-    const lama = data.find((x) => x.id === id);
-    if (!lama) return;
-    // Ubah tampilan dulu supaya terasa seketika; kembalikan kalau server menolak.
-    const sebelum = { ...lama };
-    ubah(id, tambalan as Partial<Skenario>);
-    setPesan(null);
+  /**
+   * Simpan berurutan per skenario. Perubahan cepat pada kolom berbeda tidak
+   * lagi memakai token versi yang sama, dan draf tetap terbuka jika gagal.
+   */
+  const simpan = (id: string, tambalan: Record<string, unknown>): Promise<boolean> => {
+    const sebelumnya = antreanSimpan.current.get(id) ?? Promise.resolve(true);
+    const permintaan = sebelumnya.catch(() => false).then(async () => {
+      const lama = dataRef.current.find((x) => x.id === id);
+      if (!lama) return false;
+      setPesan(null);
 
-    const r = await fetch("/api/v1/skenario", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        aksi: "ubah", projectId, scenarioId: id,
-        diubahPada: lama.diubah_pada, ...tambalan,
-      }),
+      try {
+        const r = await fetch("/api/v1/skenario", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ aksi: "ubah", projectId, scenarioId: id, versi: lama.versi, ...tambalan }),
+        });
+        const j = await r.json().catch(() => ({ pesan: "Respons server tidak dapat dibaca." }));
+        if (!r.ok) {
+          if (j.terbaru) ubah(id, j.terbaru as Partial<Skenario>);
+          setPesan({ jenis: "galat", teks: j.pesan ?? "Gagal menyimpan. Draf Anda tetap tersedia." });
+          return false;
+        }
+
+        const lokal: Partial<Skenario> = {};
+        if ("judul" in tambalan) lokal.judul = tambalan.judul as string;
+        if ("status" in tambalan) lokal.status = tambalan.status as string;
+        if ("langkahPengujian" in tambalan) lokal.langkah_pengujian = tambalan.langkahPengujian as string;
+        if ("hasilDiharapkan" in tambalan) lokal.hasil_diharapkan = tambalan.hasilDiharapkan as string;
+        if ("hasilAktual" in tambalan) lokal.hasil_aktual = tambalan.hasilAktual as string;
+        if ("catatanTindakLanjut" in tambalan) lokal.catatan_tindak_lanjut = tambalan.catatanTindakLanjut as string;
+        if ("pengujiId" in tambalan) {
+          lokal.penguji_id = tambalan.pengujiId as string | null;
+          lokal.penguji_nama = orang.find((o) => o.id === tambalan.pengujiId)?.nama ?? null;
+        }
+        if ("moduleId" in tambalan) lokal.module_id = tambalan.moduleId as string | null;
+        if ("siapRetest" in tambalan) lokal.siap_retest = tambalan.siapRetest as boolean;
+        ubah(id, { ...lokal, versi: j.versi, diubah_pada: j.diubahPada });
+        return true;
+      } catch {
+        setPesan({ jenis: "galat", teks: "Tidak dapat terhubung. Draf Anda tetap tersedia; coba simpan lagi." });
+        return false;
+      }
     });
 
-    if (!r.ok) {
-      const j = await r.json().catch(() => ({ pesan: "Gagal menyimpan" }));
-      // Kembalikan ke keadaan semula: data yang tampak tersimpan padahal tidak
-      // adalah kebohongan yang paling membingungkan saat pengujian.
-      ubah(id, sebelum);
-      setPesan({ jenis: "galat", teks: j.pesan ?? "Gagal menyimpan" });
-      return;
-    }
-    const j = await r.json();
-    if (j.diubahPada) ubah(id, { diubah_pada: j.diubahPada });
+    antreanSimpan.current.set(id, permintaan);
+    void permintaan.then(() => {
+      if (antreanSimpan.current.get(id) === permintaan) antreanSimpan.current.delete(id);
+    });
+    return permintaan;
   };
 
   const tambah = async (moduleId: string | null) => {
     setSibuk(true); setPesan(null);
-    const r = await fetch("/api/v1/skenario", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ aksi: "tambah", projectId, fase, moduleId, judul: "Skenario baru" }),
-    });
-    setSibuk(false);
-    if (!r.ok) {
-      const j = await r.json().catch(() => ({ pesan: "Gagal menambah" }));
-      setPesan({ jenis: "galat", teks: j.pesan }); return;
-    }
-    const { id, kode } = await r.json();
-    setData((d) => [...d, {
-      id, kode, fase, judul: "Skenario baru",
-      langkah_pengujian: null, hasil_diharapkan: null, hasil_aktual: null,
-      status: "PENDING", catatan_tindak_lanjut: null,
-      siap_retest: false, module_id: moduleId, urutan: d.length,
-      penguji_id: null, penguji_nama: null, jumlah_bukti: 0,
-      diubah_pada: new Date().toISOString(),
-    }]);
+    try {
+      const r = await fetch("/api/v1/skenario", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aksi: "tambah", projectId, fase, moduleId, judul: "Skenario baru" }),
+      });
+      const j = await r.json().catch(() => ({ pesan: "Respons server tidak dapat dibaca." }));
+      if (!r.ok) { setPesan({ jenis: "galat", teks: j.pesan ?? "Gagal menambah skenario." }); return; }
+      perbaruiData((baris) => [...baris, {
+        id: j.id, kode: j.kode, fase, judul: "Skenario baru",
+        langkah_pengujian: null, hasil_diharapkan: null, hasil_aktual: null,
+        status: "PENDING", catatan_tindak_lanjut: null,
+        siap_retest: false, module_id: moduleId, urutan: dataRef.current.length,
+        penguji_id: null, penguji_nama: null, jumlah_bukti: 0,
+        diubah_pada: j.diubahPada, versi: j.versi,
+      }]);
+    } catch {
+      setPesan({ jenis: "galat", teks: "Tidak dapat terhubung. Skenario belum ditambahkan; coba lagi." });
+    } finally { setSibuk(false); }
   };
 
   const hapus = async (s: Skenario) => {
+    if (!window.confirm(`Hapus skenario ${s.kode} — ${s.judul}? Tindakan ini tidak dapat dibatalkan.`)) return;
     setPesan(null);
-    const r = await fetch("/api/v1/skenario", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ aksi: "hapus", projectId, scenarioId: s.id }),
-    });
-    if (!r.ok) {
-      const j = await r.json().catch(() => ({ pesan: "Gagal menghapus" }));
-      setPesan({ jenis: "galat", teks: j.pesan }); return;
-    }
-    setData((d) => d.filter((x) => x.id !== s.id));
+    setHapusSibuk(s.id);
+    try {
+      const r = await fetch("/api/v1/skenario", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aksi: "hapus", projectId, scenarioId: s.id }),
+      });
+      const j = await r.json().catch(() => ({ pesan: "Respons server tidak dapat dibaca." }));
+      if (!r.ok) { setPesan({ jenis: "galat", teks: j.pesan ?? "Gagal menghapus skenario." }); return; }
+      perbaruiData((baris) => baris.filter((x) => x.id !== s.id));
+      if (bukaPanel === s.id) setBukaPanel(null);
+    } catch {
+      setPesan({ jenis: "galat", teks: "Tidak dapat terhubung. Skenario belum dihapus." });
+    } finally { setHapusSibuk(null); }
   };
 
   // ---- penyaringan ----
@@ -253,17 +295,17 @@ export function TabelSkenario({
 
                           <td className="max-w-[280px] px-3 py-2">
                             <TeksSel nilai={s.langkah_pengujian ?? ""} bolehUbah={bolehKelolaSkenario}
-                              simpan={(v) => void simpan(s.id, { langkahPengujian: v })} banyakBaris />
+                              simpan={(v) => simpan(s.id, { langkahPengujian: v })} banyakBaris />
                           </td>
 
                           <td className="max-w-[280px] px-3 py-2">
                             <TeksSel nilai={s.hasil_diharapkan ?? ""} bolehUbah={bolehKelolaSkenario}
-                              simpan={(v) => void simpan(s.id, { hasilDiharapkan: v })} banyakBaris />
+                              simpan={(v) => simpan(s.id, { hasilDiharapkan: v })} banyakBaris />
                           </td>
 
                           <td className="max-w-[280px] px-3 py-2">
                             <TeksSel nilai={s.hasil_aktual ?? ""} bolehUbah={bolehUbah}
-                              simpan={(v) => void simpan(s.id, { hasilAktual: v })} banyakBaris />
+                              simpan={(v) => simpan(s.id, { hasilAktual: v })} banyakBaris />
                           </td>
 
                           <td className="px-3 py-2">
@@ -323,10 +365,10 @@ export function TabelSkenario({
 
                           <td className="px-2 py-2 text-right">
                             {bolehKelolaSkenario && (
-                              <button type="button" onClick={() => void hapus(s)}
+                              <button type="button" onClick={() => void hapus(s)} disabled={hapusSibuk === s.id}
                                 aria-label={`Hapus ${s.kode}`} title="Hapus skenario"
                                 className="rounded px-2 py-1 text-[12.5px] text-tinta-3 opacity-0 transition-opacity hover:bg-gagal-lembut hover:text-gagal focus:opacity-100 group-hover:opacity-100">
-                                Hapus
+                                {hapusSibuk === s.id ? "Menghapus…" : "Hapus"}
                               </button>
                             )}
                           </td>
@@ -356,6 +398,7 @@ export function TabelSkenario({
 
       {terpilih && (
         <PanelSkenario
+          key={terpilih.id}
           skenario={terpilih}
           projectId={projectId}
           bolehUbah={bolehUbah}
@@ -376,7 +419,7 @@ export function TabelSkenario({
             if ("hasil_diharapkan" in tambalan) kirim.hasilDiharapkan = tambalan.hasil_diharapkan;
             if ("hasil_aktual" in tambalan) kirim.hasilAktual = tambalan.hasil_aktual;
             if (kunci && Object.keys(kirim).length === 0) kirim[kunci] = tambalan[kunci as keyof typeof tambalan];
-            void simpan(terpilih.id, kirim);
+            return simpan(terpilih.id, kirim);
           }}
         />
       )}
@@ -387,18 +430,34 @@ export function TabelSkenario({
 /**
  * Sel teks yang bisa diklik lalu diketik.
  *
- * KENAPA DIKETIK DI TEMPAT: lihat penjelasan di atas tabel. Yang perlu
- * diperhatikan: nilai disimpan saat kehilangan fokus atau menekan Enter, bukan
- * setiap ketikan — supaya satu paragraf tidak menjadi 60 permintaan.
+ * KENAPA DIKETIK DI TEMPAT: lihat penjelasan di atas tabel. Nilai hanya dikirim
+ * lewat tombol Simpan/Ctrl+Enter atau saat fokus berpindah. Draf tetap terbuka
+ * dan dapat dicoba ulang bila server menolak penyimpanan.
  */
 function TeksSel({
   nilai, bolehUbah, simpan, tebal, banyakBaris, wajib,
 }: {
-  nilai: string; bolehUbah: boolean; simpan: (v: string) => void;
+  nilai: string; bolehUbah: boolean; simpan: (v: string) => Promise<boolean>;
   tebal?: boolean; banyakBaris?: boolean; wajib?: boolean;
 }) {
   const [buka, setBuka] = useState(false);
   const [draf, setDraf] = useState(nilai);
+  const [sibuk, setSibuk] = useState(false);
+  const kunciSimpan = useRef(false);
+  const batalRef = useRef(false);
+
+  async function simpanDraf() {
+    if (kunciSimpan.current) return;
+    if (draf === nilai) { setBuka(false); return; }
+    kunciSimpan.current = true;
+    setSibuk(true);
+    try {
+      if (await simpan(draf)) setBuka(false);
+    } finally {
+      kunciSimpan.current = false;
+      setSibuk(false);
+    }
+  }
 
   if (!bolehUbah) {
     return (
@@ -413,7 +472,7 @@ function TeksSel({
   if (!buka) {
     return (
       <button type="button"
-        onClick={() => { setDraf(nilai); setBuka(true); }}
+        onClick={() => { batalRef.current = false; setDraf(nilai); setBuka(true); }}
         className={cn("block w-full whitespace-pre-wrap break-words rounded px-1 py-0.5 text-left hover:bg-kanvas",
           tebal ? "font-medium text-tinta" : "text-tinta-2",
           !nilai && "text-tinta-3",
@@ -426,20 +485,30 @@ function TeksSel({
 
   const Tag = banyakBaris ? "textarea" : "input";
   return (
-    <Tag
-      autoFocus
-      value={draf}
-      rows={banyakBaris ? 3 : undefined}
-      onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setDraf(e.target.value)}
-      onBlur={() => { setBuka(false); if (draf !== nilai) simpan(draf); }}
-      onKeyDown={(e: React.KeyboardEvent) => {
-        if (e.key === "Enter" && !banyakBaris) { e.preventDefault(); setBuka(false); if (draf !== nilai) simpan(draf); }
-        // Escape membatalkan. Tanpa ini, salah klik lalu menekan Escape akan
-        // tetap menyimpan draf — dan sel yang tidak sengaja disentuh terubah.
-        if (e.key === "Escape") { e.preventDefault(); setDraf(nilai); setBuka(false); }
-      }}
-      className={cn("w-full rounded border border-aksi bg-kartu px-1.5 py-1 text-[13.5px] outline-none",
-        tebal ? "font-medium text-tinta" : "text-tinta-2")}
-    />
+    <div onBlur={(e) => {
+      const tujuan = e.relatedTarget;
+      if (tujuan instanceof Node && e.currentTarget.contains(tujuan)) return;
+      if (!batalRef.current && draf !== nilai) void simpanDraf();
+    }}>
+      <Tag autoFocus value={draf} rows={banyakBaris ? 3 : undefined} maxLength={20000} disabled={sibuk}
+        onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setDraf(e.target.value)}
+        onKeyDown={(e: React.KeyboardEvent) => {
+          if (e.key === "Escape") { e.preventDefault(); batalRef.current = true; setDraf(nilai); setBuka(false); }
+          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void simpanDraf(); }
+        }}
+        className={cn("w-full rounded border border-aksi bg-kartu px-1.5 py-1 text-[13.5px] outline-none",
+          tebal ? "font-medium text-tinta" : "text-tinta-2")}
+      />
+      <div className="mt-1 flex items-center gap-1.5">
+        <button type="button" onClick={() => void simpanDraf()} disabled={sibuk || draf === nilai}
+          className="rounded bg-aksi px-2 py-1 text-[11.5px] font-semibold text-white disabled:opacity-50">
+          {sibuk ? "Menyimpan…" : "Simpan"}
+        </button>
+        <button type="button" onClick={() => { batalRef.current = true; setDraf(nilai); setBuka(false); }} disabled={sibuk}
+          className="rounded border border-garis px-2 py-1 text-[11.5px] text-tinta-2 disabled:opacity-50">
+          Batal
+        </button>
+      </div>
+    </div>
   );
 }

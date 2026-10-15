@@ -23,9 +23,9 @@ export function TombolProyekBaru() {
   const [f, setF] = useState({
     nama: "", modulAplikasi: "", unitBisnis: "", ruangLingkup: "",
     sumberAcuan: "", dasarRegulasi: "", lingkungan: "DEV", alamatServer: "",
-    tahunAnggaran: new Date().getFullYear(), tanggalMulai: "", targetSelesai: "",
+    tahunAnggaran: String(new Date().getFullYear()), tanggalMulai: "", targetSelesai: "",
   });
-  const set = (k: string, v: string | number) => setF((x) => ({ ...x, [k]: v }));
+  const set = (k: string, v: string) => setF((x) => ({ ...x, [k]: v }));
 
   if (!buka) {
     return (
@@ -38,7 +38,7 @@ export function TombolProyekBaru() {
 
   return (
     <>
-      <button type="button" onClick={() => setBuka(false)}
+      <button type="button" onClick={() => { if (!sibuk) setBuka(false); }} disabled={sibuk}
         aria-label="Tutup formulir"
         className="fixed inset-0 z-30 bg-tinta/10" />
       <aside role="dialog" aria-label="Proyek baru"
@@ -47,17 +47,22 @@ export function TombolProyekBaru() {
           onSubmit={async (e) => {
             e.preventDefault();
             setSibuk(true); setGalat(null);
-            const r = await fetch("/api/v1/proyek", {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ aksi: "tambah", ...f }),
-            });
-            setSibuk(false);
-            if (!r.ok) {
-              const { pesan } = await r.json().catch(() => ({ pesan: "Gagal menyimpan" }));
-              setGalat(pesan); return;
-            }
-            const { id } = await r.json();
-            router.push(`/proyek/${id}`);
+            try {
+              const r = await fetch("/api/v1/proyek", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  aksi: "tambah", ...f,
+                  tahunAnggaran: f.tahunAnggaran.trim() ? Number(f.tahunAnggaran) : null,
+                  tanggalMulai: f.tanggalMulai || null,
+                  targetSelesai: f.targetSelesai || null,
+                }),
+              });
+              const hasil = await r.json().catch(() => ({ pesan: "Respons server tidak dapat dibaca." }));
+              if (!r.ok) { setGalat(hasil.pesan ?? "Gagal menyimpan proyek."); return; }
+              router.push(`/proyek/${hasil.id}`);
+            } catch {
+              setGalat("Tidak dapat terhubung. Proyek belum dibuat; coba lagi.");
+            } finally { setSibuk(false); }
           }}>
           <h2 className="mb-1 text-[20px] font-bold tracking-tight text-tinta">Proyek baru</h2>
           <p className="mb-5 text-[13.5px] leading-relaxed text-tinta-2">
@@ -94,7 +99,7 @@ export function TombolProyekBaru() {
               <Isian label="Alamat server" nilai={f.alamatServer} ubah={(v) => set("alamatServer", v)} contoh="http://tkd-dev..." />
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
-              <Isian label="Tahun anggaran" tipe="number" nilai={String(f.tahunAnggaran)} ubah={(v) => set("tahunAnggaran", Number(v))} />
+              <Isian label="Tahun anggaran" tipe="number" nilai={f.tahunAnggaran} ubah={(v) => set("tahunAnggaran", v)} />
               <Isian label="Tanggal mulai" tipe="date" nilai={f.tanggalMulai} ubah={(v) => set("tanggalMulai", v)} />
               <Isian label="Target selesai" tipe="date" nilai={f.targetSelesai} ubah={(v) => set("targetSelesai", v)} />
             </div>
@@ -111,7 +116,7 @@ export function TombolProyekBaru() {
               className="sentuh rounded-md bg-aksi px-5 text-[14.5px] font-medium text-white disabled:opacity-60">
               {sibuk ? "Menyimpan…" : "Simpan proyek"}
             </button>
-            <button type="button" onClick={() => setBuka(false)}
+            <button type="button" disabled={sibuk} onClick={() => setBuka(false)}
               className="sentuh rounded-md border border-garis px-4 text-[14px] text-tinta-2 hover:border-garis-kuat">
               Batal
             </button>

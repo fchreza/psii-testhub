@@ -37,19 +37,39 @@ export async function POST(req: Request) {
       if (!ROLE_PENGUJI.includes(user.peran)) {
         return NextResponse.json({ pesan: "Hanya akun Internal Kemenkeu atau Eksternal Kemenkeu yang dapat ditugaskan sebagai penguji proyek." }, { status: 400 });
       }
-      await klienMentah.unsafe(
-        `INSERT INTO th_project_members (project_id, user_id, peran_proyek)
-         VALUES ($1, $2::uuid, 'PENGUJI') ON CONFLICT (project_id, user_id) DO NOTHING`,
-        [projectId, userId],
-      );
+      const [baru] = (await klienMentah.begin(async (tx) => {
+        const hasil = await tx.unsafe(
+          `INSERT INTO th_project_members (project_id, user_id, peran_proyek)
+           VALUES ($1, $2::uuid, 'PENGUJI') ON CONFLICT (project_id, user_id) DO NOTHING
+           RETURNING user_id`, [projectId, userId],
+        );
+        if (hasil[0]) {
+          await tx.unsafe(
+            `INSERT INTO th_audit_logs (user_id, project_id, aksi, kolom, nilai_baru)
+             VALUES ($1::uuid, $2, 'tugaskan_penguji', 'anggota', $3)`,
+            [saya.id, projectId, user.email],
+          );
+        }
+        return hasil;
+      })) as unknown as { user_id: string }[];
       return NextResponse.json({ ok: true, anggota: user });
     }
 
-    const hasil = await klienMentah.unsafe(
-      `DELETE FROM th_project_members WHERE project_id = $1 AND user_id = $2::uuid RETURNING user_id`,
-      [projectId, userId],
-    );
-    if (hasil.count === 0) return NextResponse.json({ pesan: "Pengguna tidak tercatat sebagai anggota proyek ini." }, { status: 404 });
+    const [hasil] = (await klienMentah.begin(async (tx) => {
+      const deleted = await tx.unsafe(
+        `DELETE FROM th_project_members WHERE project_id = $1 AND user_id = $2::uuid RETURNING user_id`,
+        [projectId, userId],
+      );
+      if (deleted[0]) {
+        await tx.unsafe(
+          `INSERT INTO th_audit_logs (user_id, project_id, aksi, kolom, nilai_lama)
+           VALUES ($1::uuid, $2, 'cabut_penguji', 'anggota', $3)`,
+          [saya.id, projectId, userId],
+        );
+      }
+      return deleted;
+    })) as unknown as { user_id: string }[];
+    if (!hasil) return NextResponse.json({ pesan: "Pengguna tidak tercatat sebagai anggota proyek ini." }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[anggota-proyek]", e instanceof Error ? e.message : e);
