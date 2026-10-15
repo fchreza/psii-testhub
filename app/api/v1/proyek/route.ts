@@ -172,7 +172,7 @@ export async function POST(req: Request) {
       const projectId = isi.projectId ?? "";
       if (!/^PRJ-\d{3,}$/.test(projectId)) return NextResponse.json({ pesan: "ID proyek tidak sah." }, { status: 400 });
 
-      const perubahan: { kolom: string; nilai: string | number | null }[] = [];
+      const perubahan: { kolom: string; nilai: string | number | null; cast?: string }[] = [];
       const teks: { kunci: "nama" | "aplikasi" | "modul" | "modulAplikasi" | "unitBisnis" | "ruangLingkup" | "sumberAcuan" | "dasarRegulasi" | "alamatServer" | "versiDokumen" | "disusunOleh" | "statusDokumen"; kolom: string; batas: number; wajib?: boolean }[] = [
         { kunci: "nama", kolom: "nama", batas: 200, wajib: true },
         { kunci: "aplikasi", kolom: "aplikasi", batas: 160 },
@@ -194,6 +194,20 @@ export async function POST(req: Request) {
         const nilai = raw.trim().slice(0, field.batas);
         if (field.wajib && !nilai) return NextResponse.json({ pesan: "Nama proyek wajib diisi." }, { status: 400 });
         perubahan.push({ kolom: field.kolom, nilai: nilai || null });
+      }
+      if (isi.pmId !== undefined) {
+        let pmId: string | null = null;
+        if (isi.pmId !== null && isi.pmId !== "") {
+          if (typeof isi.pmId !== "string" || !UUID.test(isi.pmId)) {
+            return NextResponse.json({ pesan: "PIC tidak sah." }, { status: 400 });
+          }
+          const [pic] = (await klienMentah.unsafe(
+            `SELECT id::text AS id FROM th_users WHERE id = $1::uuid AND aktif = true`, [isi.pmId],
+          )) as unknown as { id: string }[];
+          if (!pic) return NextResponse.json({ pesan: "PIC harus merupakan akun aktif." }, { status: 400 });
+          pmId = pic.id;
+        }
+        perubahan.push({ kolom: "pm_id", nilai: pmId, cast: "::uuid" });
       }
       if (isi.lingkungan !== undefined) {
         if (!LINGKUNGAN_SAH.includes(isi.lingkungan)) return NextResponse.json({ pesan: "Lingkungan uji tidak sah." }, { status: 400 });
@@ -223,7 +237,7 @@ export async function POST(req: Request) {
         const [lama] = (await tx.unsafe(
           `SELECT nama, aplikasi, modul, modul_aplikasi, unit_bisnis, ruang_lingkup, sumber_acuan, dasar_regulasi,
                   lingkungan, alamat_server, tahun_anggaran, tanggal_mulai, target_selesai,
-                  versi_dokumen, disusun_oleh, status_dokumen
+                  versi_dokumen, disusun_oleh, status_dokumen, pm_id
            FROM th_projects WHERE id = $1 FOR UPDATE`, [projectId],
         )) as unknown as Record<string, string | number | Date | null>[];
         if (!lama) return { error: "Proyek tidak ditemukan." };
@@ -250,7 +264,7 @@ export async function POST(req: Request) {
         });
         if (!efektif.length) return { error: null, changed: 0 };
         const parameter: (string | number | null)[] = [projectId];
-        const setSql = efektif.map((x) => { parameter.push(x.nilai); return `${x.kolom} = $${parameter.length}`; });
+        const setSql = efektif.map((x) => { parameter.push(x.nilai); return `${x.kolom} = $${parameter.length}${x.cast ?? ""}`; });
         await tx.unsafe(`UPDATE th_projects SET ${setSql.join(", ")} WHERE id = $1`, parameter);
         for (const item of efektif) {
           await tx.unsafe(

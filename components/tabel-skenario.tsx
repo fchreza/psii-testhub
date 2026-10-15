@@ -6,6 +6,7 @@ import { tanggalID } from "@/lib/waktu";
 import { PanelSkenario } from "./panel-skenario";
 import { Spinner } from "@/components/indikator-proses";
 import { useFocusTrap } from "@/components/use-focus-trap";
+import { Button, Feedback, Input, Select, Textarea } from "@/components/ui";
 
 export type Skenario = {
   id: string; kode: string; fase: string; judul: string;
@@ -259,41 +260,41 @@ export function TabelSkenario({
       <div className="mb-3 flex flex-wrap items-end gap-3 rounded-lg border border-garis bg-kartu px-4 py-3">
         <div>
           <label htmlFor="f-status" className="mb-1 block text-[12.5px] font-medium text-tinta-3">Status</label>
-          <select id="f-status" value={saring.status}
+          <Select id="f-status" value={saring.status} wrapClassName="w-auto"
             onChange={(e) => setSaring((s) => ({ ...s, status: e.target.value }))}
-            className="rounded-md border border-garis-kuat px-2.5 py-1.5 text-[14px] text-tinta-2 outline-none focus:border-aksi">
+            className="h-9 w-auto min-w-[120px] py-1 text-[13px]">
             <option value="">Semua</option>
             {STATUS_PILIHAN.map((x) => <option key={x} value={x}>{labelStatus(x)}</option>)}
-          </select>
+          </Select>
         </div>
 
         {berModul && (
           <div>
             <label htmlFor="f-modul" className="mb-1 block text-[12.5px] font-medium text-tinta-3">Modul</label>
-            <select id="f-modul" value={saring.modul}
+            <Select id="f-modul" value={saring.modul} wrapClassName="w-full max-w-[220px]"
               onChange={(e) => setSaring((s) => ({ ...s, modul: e.target.value }))}
-              className="max-w-[220px] rounded-md border border-garis-kuat px-2.5 py-1.5 text-[14px] text-tinta-2 outline-none focus:border-aksi">
+              className="h-9 py-1 text-[13px]">
               <option value="">Semua</option>
               {modul.map((m) => <option key={m.id} value={m.id}>{m.kode}. {m.nama}</option>)}
-            </select>
+            </Select>
           </div>
         )}
 
         <div>
           <label htmlFor="f-penguji" className="mb-1 block text-[12.5px] font-medium text-tinta-3">Penguji</label>
-          <select id="f-penguji" value={saring.penguji}
+          <Select id="f-penguji" value={saring.penguji} wrapClassName="w-full max-w-[180px]"
             onChange={(e) => setSaring((s) => ({ ...s, penguji: e.target.value }))}
-            className="max-w-[180px] rounded-md border border-garis-kuat px-2.5 py-1.5 text-[14px] text-tinta-2 outline-none focus:border-aksi">
+            className="h-9 py-1 text-[13px]">
             <option value="">Semua</option>
             {orang.map((o) => <option key={o.id} value={o.id}>{o.nama}</option>)}
-          </select>
+          </Select>
         </div>
 
         <div className="min-w-[160px] flex-1">
           <label htmlFor="f-cari" className="mb-1 block text-[12.5px] font-medium text-tinta-3">Cari</label>
-          <input id="f-cari" value={saring.cari} placeholder="ID atau judul skenario"
+          <Input id="f-cari" value={saring.cari} placeholder="ID atau judul skenario"
             onChange={(e) => setSaring((s) => ({ ...s, cari: e.target.value }))}
-            className="w-full rounded-md border border-garis-kuat px-2.5 py-1.5 text-[15px] outline-none focus:border-aksi" />
+            className="h-9 text-[14px]" />
         </div>
 
         <p className="text-[13px] text-tinta-3">
@@ -303,14 +304,9 @@ export function TabelSkenario({
       </div>
 
       {pesan && (
-        <div role={pesan.jenis === "galat" ? "alert" : "status"} aria-live={pesan.jenis === "galat" ? "assertive" : "polite"} className={cn(
-          "mb-3 rounded-lg border px-4 py-2.5 text-[13.5px]",
-          pesan.jenis === "galat"
-            ? "border-gagal bg-gagal-lembut text-gagal"
-            : "border-aksi bg-aksi-lembut text-aksi",
-        )}>
+        <Feedback kind={pesan.jenis === "galat" ? "error" : "info"} className="mb-3">
           {pesan.teks}
-        </div>
+        </Feedback>
       )}
 
       {jumlahSimpanAktif > 0 && (
@@ -395,13 +391,13 @@ export function TabelSkenario({
                           </td>
 
                           <td className="px-3 py-2">
-                            <select value={s.penguji_id ?? ""} disabled={!bolehKelolaSkenario || barisSibuk.has(s.id)} aria-busy={barisSibuk.has(s.id)}
+                            <Select value={s.penguji_id ?? ""} disabled={!bolehKelolaSkenario || barisSibuk.has(s.id)} aria-busy={barisSibuk.has(s.id)}
                               onChange={(e) => void simpan(s.id, { pengujiId: e.target.value || null })}
                               aria-label={`Penguji ${s.kode}`}
-                              className="max-w-[150px] rounded border border-transparent bg-transparent px-1 py-1 text-[13.5px] text-tinta-2 hover:border-garis focus:border-aksi focus:outline-none">
+                              wrapClassName="max-w-[150px]" className="h-8 rounded-md border-transparent bg-transparent py-1 pl-1.5 pr-7 text-[13px] text-tinta-2 shadow-none hover:border-garis">
                               <option value="">—</option>
                               {orang.map((o) => <option key={o.id} value={o.id}>{o.nama}</option>)}
-                            </select>
+                            </Select>
                             {barisSibuk.has(s.id) && <Spinner className="ml-1 inline h-3.5 w-3.5" />}
                           </td>
 
@@ -422,12 +418,12 @@ export function TabelSkenario({
                           </td>
 
                           <td className="px-3 py-2">
-                            <select value={s.status} disabled={!bolehUbah || barisSibuk.has(s.id)} aria-busy={barisSibuk.has(s.id)}
+                            <Select value={s.status} disabled={!bolehUbah || barisSibuk.has(s.id)} aria-busy={barisSibuk.has(s.id)}
                               onChange={(e) => void simpan(s.id, { status: e.target.value })}
                               aria-label={`Status ${s.kode}`}
-                              className={cn("rounded px-2 py-1 text-[13px] font-medium", st.kelas)}>
+                              wrapClassName="max-w-[145px]" className={cn("h-8 rounded-md py-1 pl-2 pr-7 text-[12.5px] font-medium shadow-none", st.kelas)}>
                               {STATUS_PILIHAN.map((x) => <option key={x} value={x}>{labelStatus(x)}</option>)}
-                            </select>
+                            </Select>
                             {barisSibuk.has(s.id) && <Spinner className="ml-1 inline h-3.5 w-3.5" />}
                           </td>
 
@@ -530,7 +526,7 @@ export function TabelSkenario({
             onClick={() => { setKonfirmasiHapus(null); setHapusGalat(null); }}
             className="absolute inset-0 bg-tinta/45 disabled:cursor-wait" />
           <section ref={hapusDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="judul-konfirmasi-hapus-skenario"
-            className="relative z-10 w-full max-w-lg rounded-xl border border-garis bg-kartu p-5 shadow-xl sm:p-6">
+            className="relative z-10 w-full max-w-lg rounded-xl border border-garis bg-kartu p-5 shadow-2xl sm:p-6">
             <h2 id="judul-konfirmasi-hapus-skenario" className="text-lg font-bold text-tinta">
               {konfirmasiHapus.id.startsWith("draft:") ? "Buang draf skenario?" : "Hapus skenario?"}
             </h2>
@@ -539,17 +535,16 @@ export function TabelSkenario({
                 ? "Draf ini belum disimpan ke server. Buang draf dari layar ini?"
                 : <>Skenario <strong>{konfirmasiHapus.kode} — {konfirmasiHapus.judul}</strong> akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.</>}
             </p>
-            {hapusGalat && <p role="alert" className="mt-3 rounded-md border border-gagal bg-gagal-lembut px-3 py-2 text-[13px] text-gagal">{hapusGalat}</p>}
+            {hapusGalat && <Feedback kind="error" className="mt-3">{hapusGalat}</Feedback>}
             <div className="mt-5 flex justify-end gap-2">
-              <button type="button" autoFocus disabled={hapusSibuk.has(konfirmasiHapus.id)}
+              <Button type="button" autoFocus disabled={hapusSibuk.has(konfirmasiHapus.id)}
                 onClick={() => { setKonfirmasiHapus(null); setHapusGalat(null); }}
-                className="rounded-lg border border-garis-kuat px-3.5 py-2 text-[13px] font-medium text-tinta-2 hover:bg-kanvas disabled:opacity-60">Batal</button>
-              <button type="button" disabled={hapusSibuk.has(konfirmasiHapus.id)} aria-busy={hapusSibuk.has(konfirmasiHapus.id)}
+                className="text-[13px]">Batal</Button>
+              <Button type="button" variant="danger" busy={hapusSibuk.has(konfirmasiHapus.id)}
                 onClick={() => void hapus(konfirmasiHapus)}
-                className="inline-flex items-center gap-2 rounded-lg bg-gagal px-3.5 py-2 text-[13px] font-semibold text-white disabled:cursor-wait disabled:opacity-60">
-                {hapusSibuk.has(konfirmasiHapus.id) && <Spinner className="h-4 w-4" />}
+                className="text-[13px]">
                 {hapusSibuk.has(konfirmasiHapus.id) ? "Menghapus…" : konfirmasiHapus.id.startsWith("draft:") ? "Buang draf" : "Hapus skenario"}
-              </button>
+              </Button>
             </div>
           </section>
         </div>
@@ -623,31 +618,40 @@ function TeksSel({
     );
   }
 
-  const Tag = banyakBaris ? "textarea" : "input";
   return (
     <div onBlur={(e) => {
       const tujuan = e.relatedTarget;
       if (tujuan instanceof Node && e.currentTarget.contains(tujuan)) return;
       if (!batalRef.current && draf !== nilai) void simpanDraf();
     }}>
-      <Tag autoFocus aria-label={ariaLabel} value={draf} rows={banyakBaris ? 3 : undefined} maxLength={20000} disabled={sibuk || disabled}
-        onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setDraf(e.target.value)}
-        onKeyDown={(e: React.KeyboardEvent) => {
+      {banyakBaris ? (
+        <Textarea autoFocus aria-label={ariaLabel} value={draf} rows={3} maxLength={20000} disabled={sibuk || disabled}
+          onChange={(e) => setDraf(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") { e.preventDefault(); batalRef.current = true; setDraf(nilai); tutupDanKembalikanFokus(); }
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void simpanDraf(); }
+          }}
+          className={cn("min-h-[60px] rounded border-aksi px-1.5 py-1 text-[13.5px] shadow-none", tebal ? "font-medium text-tinta" : "text-tinta-2")}
+        />
+      ) : (
+        <Input autoFocus aria-label={ariaLabel} value={draf} maxLength={20000} disabled={sibuk || disabled}
+          onChange={(e) => setDraf(e.target.value)}
+          onKeyDown={(e) => {
           if (e.key === "Escape") { e.preventDefault(); batalRef.current = true; setDraf(nilai); tutupDanKembalikanFokus(); }
           if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void simpanDraf(); }
         }}
-        className={cn("w-full rounded border border-aksi bg-kartu px-1.5 py-1 text-[13.5px] outline-none",
-          tebal ? "font-medium text-tinta" : "text-tinta-2")}
-      />
+          className={cn("h-8 rounded border-aksi px-1.5 py-1 text-[13.5px] shadow-none", tebal ? "font-medium text-tinta" : "text-tinta-2")}
+        />
+      )}
       <div className="mt-1 flex items-center gap-1.5">
-        <button type="button" onClick={() => void simpanDraf()} disabled={sibuk || disabled || draf === nilai} aria-busy={sibuk}
-          className="inline-flex items-center gap-1 rounded bg-aksi px-2 py-1 text-[11.5px] font-semibold text-white disabled:opacity-50">
-          {sibuk && <Spinner className="h-3 w-3" />}{sibuk ? "Menyimpan…" : "Simpan"}
-        </button>
-        <button type="button" onClick={() => { batalRef.current = true; setDraf(nilai); tutupDanKembalikanFokus(); }} disabled={sibuk || disabled}
-          className="rounded border border-garis px-2 py-1 text-[11.5px] text-tinta-2 disabled:opacity-50">
+        <Button type="button" variant="primary" onClick={() => void simpanDraf()} disabled={disabled || draf === nilai} busy={sibuk}
+          className="min-h-7 rounded px-2 py-1 text-[11.5px]">
+          {sibuk ? "Menyimpan…" : "Simpan"}
+        </Button>
+        <Button type="button" onClick={() => { batalRef.current = true; setDraf(nilai); tutupDanKembalikanFokus(); }} disabled={sibuk || disabled}
+          className="min-h-7 rounded px-2 py-1 text-[11.5px]">
           Batal
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -84,6 +84,9 @@ export default async function HalamanProyek({
      FROM th_project_members m JOIN th_users u ON u.id = m.user_id
      WHERE m.project_id = $1 ORDER BY u.nama`, [id],
   ) : Promise.resolve([]);
+  const picQuery = kelolaProyek
+    ? klienMentah.unsafe(`SELECT id::text AS id, nama FROM th_users WHERE aktif = true ORDER BY nama`)
+    : Promise.resolve([]);
 
   const skenarioQuery = klienMentah.unsafe(`
     SELECT s.id, s.kode, s.fase, s.judul, s.langkah_pengujian, s.hasil_diharapkan, s.hasil_aktual,
@@ -106,13 +109,14 @@ export default async function HalamanProyek({
 
   // Jalankan data pendukung secara paralel setelah otorisasi lolos; sebelumnya
   // lima round trip database berurutan menahan halaman meski query independen.
-  const [modulRows, orangRows, calonRows, anggotaRows, skenarioRows] = await Promise.all([
-    modulQuery, orangQuery, calonQuery, anggotaQuery, skenarioQuery,
+  const [modulRows, orangRows, calonRows, anggotaRows, picRows, skenarioRows] = await Promise.all([
+    modulQuery, orangQuery, calonQuery, anggotaQuery, picQuery, skenarioQuery,
   ]);
   const modul = modulRows as unknown as Modul[];
   const orang = orangRows as unknown as Orang[];
   const calon = calonRows as unknown as { id: string; nama: string; email: string; peran: string }[];
   const anggota = anggotaRows as unknown as { id: string; nama: string; email: string; peran: string; ditambahkan_pada: string }[];
+  const pic = picRows as unknown as { id: string; nama: string }[];
   const skenario = skenarioRows as unknown as Skenario[];
 
   const hitung = {
@@ -134,31 +138,22 @@ export default async function HalamanProyek({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-tinta">{p.nama}</h1>
-              <p className="mt-1 text-[14px] text-tinta-2">
-                {[p.aplikasi ?? p.modul_aplikasi, p.modul].filter(Boolean).join(" · ") || "—"}
-                {p.pm_nama ? ` · PM: ${p.pm_nama}` : ""}
-              </p>
             </div>
             {kelolaProyek ? <div className="flex flex-wrap items-center gap-2">
               <UbahTahapProyek projectId={id} tahap={p.tahap} jenisPengujian={jenisPengujian} />
               <EditorMetadataProyek projectId={id} nilai={{
                 nama: p.nama,
-                aplikasi: p.aplikasi as string | null,
+                aplikasi: (p.aplikasi ?? p.modul_aplikasi) as string | null,
                 modul: p.modul as string | null,
-                modulAplikasi: p.modul_aplikasi as string | null,
-                unitBisnis: p.unit_bisnis as string | null,
+                jenisPengujian,
                 ruangLingkup: p.ruang_lingkup as string | null,
-                sumberAcuan: p.sumber_acuan as string | null,
                 dasarRegulasi: p.dasar_regulasi as string | null,
-                lingkungan: p.lingkungan as string,
-                alamatServer: p.alamat_server as string | null,
+                alamatPengujian: p.alamat_server as string | null,
                 tahunAnggaran: p.tahun_anggaran as number | null,
                 tanggalMulai: p.tanggal_mulai as string | Date | null,
                 targetSelesai: p.target_selesai as string | Date | null,
-                versiDokumen: p.versi_dokumen as string | null,
-                disusunOleh: p.disusun_oleh as string | null,
-                statusDokumen: p.status_dokumen as string | null,
-              }} />
+                pmId: p.pm_id as string | null,
+              }} pic={pic} />
               {saya.peran === "ADMIN" && <TombolHapusProyek projectId={id} nama={p.nama} />}
             </div> : (
               <span className="rounded bg-kanvas px-2.5 py-1 text-[13px] font-medium text-tinta-2">
@@ -168,34 +163,32 @@ export default async function HalamanProyek({
           </div>
         </header>
 
-        {/* Metadata dari halaman Cover berkas contoh. Ditampilkan karena
-            Dasar Regulasi dan Lingkungan menentukan arti hasil ujinya. */}
-        <dl className="mb-5 grid gap-x-6 gap-y-2 rounded-lg border border-garis bg-kartu px-5 py-4 text-[13.5px] sm:grid-cols-2 lg:grid-cols-3">
-          {([
-            ["Jenis pengujian", labelJenisPengujian(jenisPengujian)],
-            ["Aplikasi", p.aplikasi ?? p.modul_aplikasi],
-            ["Modul", p.modul],
-            ["Dasar regulasi", p.dasar_regulasi],
-            ["Lingkungan server", p.lingkungan],
-            ["Sumber acuan", p.sumber_acuan],
-            ["Ruang lingkup", p.ruang_lingkup],
-            ["Alamat pengujian", p.alamat_server],
-            ["Tahun anggaran", p.tahun_anggaran],
-            ["Versi dokumen", p.versi_dokumen],
-            ["Disusun oleh", p.disusun_oleh],
-            ["Status dokumen", p.status_dokumen],
-            ["Periode", p.tanggal_mulai
-              ? `${tanggalID(p.tanggal_mulai as string | Date)} – ${tanggalID(p.target_selesai as string | Date | null)}`
-              : null],
-          ] as [string, unknown][]).map(([label, nilai]) => (
-            <div key={label} className="flex gap-2">
-              <dt className="w-[104px] shrink-0 text-tinta-3">{label}</dt>
-              <dd className="min-w-0 flex-1 break-words text-tinta-2">
-                {nilai === null || nilai === undefined || nilai === "" ? "—" : String(nilai)}
-              </dd>
-            </div>
-          ))}
-        </dl>
+        <section aria-labelledby="informasi-proyek" className="mb-5 overflow-hidden rounded-xl border border-garis bg-kartu shadow-sm shadow-tinta/[0.03]">
+          <div className="border-b border-garis px-4 py-3 sm:px-5">
+            <h2 id="informasi-proyek" className="text-[14px] font-semibold text-tinta">Informasi proyek</h2>
+          </div>
+          <dl className="grid gap-px bg-garis sm:grid-cols-2 lg:grid-cols-3">
+            {([
+              ["Aplikasi", p.aplikasi ?? p.modul_aplikasi],
+              ["Modul", p.modul],
+              ["Jenis pengujian", labelJenisPengujian(jenisPengujian)],
+              ["Ruang lingkup", p.ruang_lingkup],
+              ["Dasar regulasi", p.dasar_regulasi],
+              ["Alamat pengujian", p.alamat_server],
+              ["Tahun anggaran", p.tahun_anggaran],
+              ["Tanggal mulai", p.tanggal_mulai ? tanggalID(p.tanggal_mulai as string | Date) : null],
+              ["Target selesai", p.target_selesai ? tanggalID(p.target_selesai as string | Date) : null],
+              ["PIC", p.pm_nama],
+            ] as [string, unknown][]).map(([label, nilai]) => (
+              <div key={label} className="min-w-0 bg-kartu px-4 py-3.5 sm:px-5">
+                <dt className="text-[12px] font-medium text-tinta-3">{label}</dt>
+                <dd className="mt-1 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-tinta">
+                  {nilai === null || nilai === undefined || nilai === "" ? <span className="text-tinta-3">—</span> : String(nilai)}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
 
         {kelolaProyek && (
           <KelolaAksesProyek projectId={id} calon={calon} anggotaAwal={anggota} faseTersedia={faseTersedia} />

@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { cn } from "@/lib/format";
 import type { FasePengujian } from "@/lib/fase-proyek";
-import { Spinner } from "@/components/indikator-proses";
+import { Button, Feedback, Select } from "@/components/ui";
 
 type Calon = { id: string; nama: string; email: string; peran: string };
 type Anggota = Calon & { ditambahkan_pada?: string };
@@ -21,7 +20,7 @@ export function KelolaAksesProyek({
   const [sibukAksi, setSibukAksi] = useState<string | null>(null);
   const [salinSibuk, setSalinSibuk] = useState<FasePengujian | null>(null);
   const sibuk = sibukAksi !== null;
-  const [pesan, setPesan] = useState<{ teks: string; galat?: boolean } | null>(null);
+  const [pesan, setPesan] = useState<{ teks: string; galat?: boolean; peringatan?: boolean } | null>(null);
   const sudahDitugaskan = useMemo(() => new Set(anggota.map((x) => x.id)), [anggota]);
   const tersedia = calon.filter((x) => !sudahDitugaskan.has(x.id));
 
@@ -57,7 +56,7 @@ export function KelolaAksesProyek({
       await navigator.clipboard.writeText(url);
       setPesan({ teks: `Tautan ${fase} disalin. Penerima harus masuk dengan akun yang sudah ditugaskan.` });
     } catch {
-      setPesan({ teks: `Salin tautan ini: ${url}` });
+      setPesan({ teks: `Salin tautan ini: ${url}`, peringatan: true });
     } finally { setSalinSibuk(null); }
   }
 
@@ -73,30 +72,27 @@ export function KelolaAksesProyek({
         </div>
         <div className="flex flex-wrap gap-2">
           {faseTersedia.map((fase) => (
-            <button key={fase} type="button" onClick={() => void salinTautan(fase)}
-              disabled={salinSibuk !== null} aria-busy={salinSibuk === fase}
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-garis px-3 py-2 text-[12.5px] font-semibold text-tinta-2 hover:border-garis-kuat hover:bg-kanvas disabled:cursor-wait disabled:opacity-60">
-              {salinSibuk === fase && <Spinner className="h-3.5 w-3.5" />}
+            <Button key={fase} onClick={() => void salinTautan(fase)}
+              disabled={salinSibuk !== null} busy={salinSibuk === fase} className="text-[12.5px]">
               {salinSibuk === fase ? "Menyalin…" : `Salin tautan ${fase}`}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
 
       <form className="mt-4 flex flex-col gap-2 sm:flex-row" onSubmit={(e) => { e.preventDefault(); if (pilihan) void kirim("tambah", pilihan); }}>
         <label htmlFor="anggota-proyek" className="sr-only">Pilih akun penguji</label>
-        <select id="anggota-proyek" value={pilihan} onChange={(e) => setPilihan(e.target.value)} disabled={sibuk || tersedia.length === 0}
-          className="min-h-10 min-w-0 flex-1 rounded-lg border border-garis-kuat bg-white px-3 text-[13px] text-tinta outline-none focus:border-aksi disabled:bg-kanvas">
+        <Select id="anggota-proyek" value={pilihan} onChange={(e) => setPilihan(e.target.value)} disabled={sibuk || tersedia.length === 0}
+          wrapClassName="min-w-0 flex-1" className="text-[13px]">
           <option value="">{tersedia.length ? "Pilih akun penguji untuk ditugaskan…" : "Tidak ada akun penguji yang tersedia"}</option>
           {tersedia.map((x) => <option key={x.id} value={x.id}>{x.nama} · {namaPeran[x.peran] ?? x.peran} · {x.email}</option>)}
-        </select>
-        <button type="submit" disabled={!pilihan || sibuk} aria-busy={sibuk}
-          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-aksi px-4 text-[13px] font-semibold text-white hover:bg-aksi/90 disabled:cursor-not-allowed disabled:opacity-50">
-          {sibuk && <Spinner className="h-4 w-4" />}{sibuk ? "Menyimpan…" : "Tugaskan penguji"}
-        </button>
+        </Select>
+        <Button type="submit" variant="primary" disabled={!pilihan} busy={sibuk} className="shrink-0 text-[13px]">
+          {sibuk ? "Menyimpan…" : "Tugaskan penguji"}
+        </Button>
       </form>
 
-      {pesan && <p role={pesan.galat ? "alert" : "status"} className={cn("mt-3 rounded-lg px-3 py-2 text-[12.5px] leading-relaxed", pesan.galat ? "border border-gagal bg-gagal-lembut text-gagal" : "bg-lulus-lembut text-lulus")}>{pesan.teks}</p>}
+      {pesan && <Feedback kind={pesan.galat ? "error" : pesan.peringatan ? "warning" : "success"} className="mt-3">{pesan.teks}</Feedback>}
 
       <div className="mt-4 border-t border-garis pt-3">
         <div className="mb-2 flex items-center justify-between gap-2">
@@ -113,11 +109,10 @@ export function KelolaAksesProyek({
                   <p className="truncate text-[13px] font-medium text-tinta">{x.nama}</p>
                   <p className="truncate text-[11.5px] text-tinta-3">{x.email} · {namaPeran[x.peran] ?? x.peran}</p>
                 </div>
-                <button type="button" onClick={() => void kirim("hapus", x.id)} disabled={sibuk} aria-busy={sibukAksi === `hapus:${x.id}`}
-                  className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium text-gagal hover:bg-gagal-lembut disabled:cursor-wait disabled:opacity-50">
-                  {sibukAksi === `hapus:${x.id}` && <Spinner className="h-3.5 w-3.5" />}
+                <Button variant="danger-quiet" onClick={() => void kirim("hapus", x.id)} disabled={sibuk}
+                  busy={sibukAksi === `hapus:${x.id}`} className="min-h-9 px-2.5 py-1.5 text-[12px]">
                   {sibukAksi === `hapus:${x.id}` ? "Mencabut akses…" : "Cabut akses"}
-                </button>
+                </Button>
               </li>
             ))}
           </ul>

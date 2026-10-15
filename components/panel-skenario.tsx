@@ -6,6 +6,7 @@ import { capWaktuID } from "@/lib/waktu";
 import { BuktiSkenario } from "./bukti-skenario";
 import type { Skenario } from "./tabel-skenario";
 import { Spinner } from "@/components/indikator-proses";
+import { Button, Feedback, Select, Textarea } from "@/components/ui";
 
 type Riwayat = {
   id: number; aksi: string; kolom: string | null;
@@ -70,6 +71,7 @@ export function PanelSkenario({
   const [editorRevision, setEditorRevision] = useState(0);
   const [simpanSibuk, setSimpanSibuk] = useState(false);
   const [simpanInfo, setSimpanInfo] = useState<{ jenis: "galat" | "info"; teks: string } | null>(null);
+  const [konfirmasiTutup, setKonfirmasiTutup] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
   const judulPanelRef = useRef<HTMLHeadingElement>(null);
   const pemicuFokusRef = useRef<HTMLElement | null>(null);
@@ -150,10 +152,16 @@ export function PanelSkenario({
   }
 
   const tutupAman = () => {
-    if (adaDrafKotor && !window.confirm("Ada perubahan yang belum disimpan. Tutup panel dan buang semua draf?")) return;
+    if (adaDrafKotor) { setKonfirmasiTutup(true); return; }
     onDraftChange?.(false);
     onTutup();
   };
+
+  function buangDrafDanTutup() {
+    setKonfirmasiTutup(false);
+    onDraftChange?.(false);
+    onTutup();
+  }
 
   useEffect(() => {
     const aktif = document.activeElement;
@@ -165,9 +173,14 @@ export function PanelSkenario({
   // Trap Tab di panel modal; Escape menutupnya, dengan konfirmasi bila ada draf.
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { tutupAman(); return; }
+      if (e.key === "Escape") {
+        if (konfirmasiTutup) { setKonfirmasiTutup(false); return; }
+        tutupAman(); return;
+      }
       if (e.key !== "Tab") return;
-      const panel = panelRef.current;
+      const panel = konfirmasiTutup
+        ? document.getElementById("konfirmasi-tutup-skenario")
+        : panelRef.current;
       if (!panel) return;
       const fokus = Array.from(panel.querySelectorAll<HTMLElement>(
         'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
@@ -183,7 +196,7 @@ export function PanelSkenario({
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [tutupAman]);
+  }, [tutupAman, konfirmasiTutup]);
 
   /*
    * Dorong isi halaman ke kiri selama panel ini terbuka.
@@ -255,12 +268,12 @@ export function PanelSkenario({
               <p className="mt-1 text-[12px] text-tinta-3">
                 {isDraft ? "Tulis judul untuk membuat skenario. Belum ada data yang disimpan." : "Ubah beberapa bagian, lalu simpan sekaligus."}
               </p>
-              {adaDrafKotor && <p role="status" className="mt-1 text-[12px] font-medium text-tertunda">Ada teks yang belum tersimpan</p>}
+              {adaDrafKotor && <Feedback kind="warning" className="mt-2 px-2.5 py-2 text-[12px]">Ada teks yang belum tersimpan</Feedback>}
             </div>
-            <button type="button" onClick={tutupAman} aria-label="Tutup"
-              className="shrink-0 rounded px-2 py-1 text-[13px] text-tinta-3 hover:bg-kanvas hover:text-tinta">
+            <Button type="button" variant="ghost" onClick={tutupAman} aria-label="Tutup"
+              className="h-9 min-h-9 shrink-0 px-2 py-1 text-[13px]">
               Tutup
-            </button>
+            </Button>
           </div>
         </header>
 
@@ -286,13 +299,13 @@ export function PanelSkenario({
           <dl className="space-y-2.5">
             <Sifat label="Status">
               {bolehUbah ? (
-                <select value={draf.status} disabled={simpanSibuk}
+                <Select value={draf.status} disabled={simpanSibuk} wrapClassName="w-auto"
                   onChange={(e) => ubahDraf("status", e.target.value)}
-                  className={cn("rounded px-2 py-1 text-[13.5px] font-medium", st.kelas)}>
+                  className={cn("h-9 w-auto rounded-md py-1 pl-2 pr-8 text-[13px] font-medium shadow-none", st.kelas)}>
                   {["PENDING","PASS","FAIL","BLOCKED"].map((x) => (
                     <option key={x} value={x}>{labelStatus(x)}</option>
                   ))}
-                </select>
+                </Select>
               ) : (
                 <span className={cn("rounded px-2 py-1 text-[13.5px] font-medium", st.kelas)}>
                   {labelStatus(draf.status)}
@@ -355,12 +368,10 @@ export function PanelSkenario({
               </p>
             ) : riwayatGalat ? (
               <div>
-                <p role="alert" className="text-[13px] text-gagal">{riwayatGalat}</p>
-                <button type="button" onClick={() => { setRiwayatMuat(true); setRiwayatRetry((x) => x + 1); }}
+                <Feedback kind="error" className="mb-2">{riwayatGalat}</Feedback>
+                <Button type="button" onClick={() => { setRiwayatMuat(true); setRiwayatRetry((x) => x + 1); }}
                   disabled={riwayatMuat} aria-busy={riwayatMuat}
-                  className="sentuh mt-1 inline-flex items-center gap-2 rounded border border-garis px-2.5 text-[12px] font-medium text-tinta-2 disabled:opacity-50">
-                  {riwayatMuat && <Spinner className="h-3 w-3" />}Coba lagi
-                </button>
+                  busy={riwayatMuat} className="mt-1 min-h-8 px-2.5 py-1 text-[12px]">Coba lagi</Button>
               </div>
             ) : riwayat.length === 0 ? (
               <p className="text-[13px] text-tinta-3">Belum ada perubahan tercatat</p>
@@ -395,27 +406,33 @@ export function PanelSkenario({
           )}
           {(bolehUbah || bolehKelolaSkenario) && (
             <div className="sticky bottom-0 -mx-6 border-t border-garis bg-kartu/95 px-6 py-3 backdrop-blur">
-              {simpanInfo && (
-                <p role="status" className={cn("mb-2 text-[12.5px]", simpanInfo.jenis === "galat" ? "text-gagal" : "text-lulus")}>
-                  {simpanInfo.teks}
-                </p>
-              )}
+              {simpanInfo && <Feedback kind={simpanInfo.jenis === "galat" ? "error" : "success"} className="mb-2">{simpanInfo.teks}</Feedback>}
               <div className="flex justify-end gap-2">
-                <button type="button" onClick={batalkanSemua} disabled={!adaDrafKotor || simpanSibuk}
-                  className="rounded-md border border-garis px-3 py-2 text-[13px] text-tinta-2 disabled:opacity-50">
+                <Button type="button" onClick={batalkanSemua} disabled={!adaDrafKotor || simpanSibuk} className="text-[13px]">
                   Batalkan
-                </button>
-                <button type="button" onClick={() => void simpanSemua()}
-                  disabled={!adaDrafKotor || simpanSibuk || (isDraft && !draf.judul.trim())} aria-busy={simpanSibuk}
-                  className="inline-flex items-center gap-2 rounded-md bg-aksi px-4 py-2 text-[13px] font-semibold text-white disabled:cursor-wait disabled:opacity-50">
-                  {simpanSibuk && <Spinner className="h-4 w-4" />}
+                </Button>
+                <Button type="button" variant="primary" onClick={() => void simpanSemua()}
+                  disabled={!adaDrafKotor || (isDraft && !draf.judul.trim())} busy={simpanSibuk} className="text-[13px]">
                   {simpanSibuk ? (isDraft ? "Membuat skenario…" : "Menyimpan semua…") : (isDraft ? "Buat skenario" : "Simpan semua perubahan")}
-                </button>
+                </Button>
               </div>
             </div>
           )}
         </div>
       </aside>
+      {konfirmasiTutup && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-tinta/50 p-4 backdrop-blur-[2px]">
+          <section id="konfirmasi-tutup-skenario" tabIndex={-1} role="alertdialog" aria-labelledby="judul-konfirmasi-tutup-skenario"
+            className="w-full max-w-sm rounded-xl border border-garis bg-kartu p-5 shadow-2xl">
+            <h2 id="judul-konfirmasi-tutup-skenario" className="text-[16px] font-semibold text-tinta">Buang perubahan?</h2>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-tinta-2">Ada perubahan yang belum disimpan. Jika panel ditutup, perubahan tersebut akan dibuang.</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button autoFocus onClick={() => setKonfirmasiTutup(false)}>Lanjutkan mengedit</Button>
+              <Button variant="danger" onClick={buangDrafDanTutup}>Buang perubahan</Button>
+            </div>
+          </section>
+        </div>
+      )}
     </>
   );
 }
@@ -485,14 +502,14 @@ function Teks({
       if (tujuan instanceof Node && e.currentTarget.contains(tujuan)) return;
       setBuka(false);
     }}>
-      <textarea autoFocus rows={4} value={draf} maxLength={maksimal} disabled={disabled}
+      <Textarea autoFocus rows={4} value={draf} maxLength={maksimal} disabled={disabled}
         aria-label={ariaLabel} placeholder={kosong}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onChange(nilai ?? ""); setBuka(false); }
           if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onSimpanSemua(); }
         }}
-        className="w-full rounded border border-aksi bg-kartu px-2 py-1.5 text-[13.5px] leading-relaxed text-tinta-2 outline-none" />
+        className="min-h-[96px] border-aksi px-2 py-1.5 text-[13.5px] leading-relaxed text-tinta-2 shadow-none" />
       <p className="mt-1 text-[11px] text-tinta-3">Perubahan masuk ke tombol Simpan semua · Ctrl+Enter untuk menyimpan semua</p>
     </div>
   );

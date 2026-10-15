@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Spinner } from "@/components/indikator-proses";
 import { useFocusTrap } from "@/components/use-focus-trap";
+import { Button, Feedback, Input } from "@/components/ui";
 
 export function TombolHapusProyek({ projectId, nama }: { projectId: string; nama: string }) {
   const router = useRouter();
@@ -55,17 +55,17 @@ export function TombolHapusProyek({ projectId, nama }: { projectId: string; nama
 
   return (
     <>
-      <button type="button" onClick={() => { setGalat(null); setInfo(null); setBuka(true); }}
-        className="rounded-md px-2 py-1 text-[13px] font-medium text-gagal hover:bg-gagal-lembut focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gagal">
+      <Button variant="danger-quiet" onClick={() => { setGalat(null); setInfo(null); setBuka(true); }}
+        className="min-h-9 px-2 py-1 text-[13px]">
         Hapus
-      </button>
-      {info && <p role="status" aria-live="polite" className={`mt-2 rounded-md border px-3 py-2 text-[12.5px] ${info.jenis === "peringatan" ? "border-tertunda/40 bg-tertunda-lembut text-tertunda" : "border-lulus/30 bg-lulus-lembut text-lulus"}`}>{info.teks} Mengalihkan ke daftar proyek…</p>}
+      </Button>
+      {info && <Feedback kind={info.jenis === "peringatan" ? "warning" : "success"} className="mt-2">{info.teks} Mengalihkan ke daftar proyek…</Feedback>}
       {buka && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <button type="button" aria-label="Tutup konfirmasi penghapusan" onClick={tutup}
             className="absolute inset-0 bg-tinta/45" />
           <section ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="judul-hapus-proyek"
-            className="relative z-10 w-full max-w-lg rounded-xl border border-garis bg-kartu p-5 shadow-xl sm:p-6">
+            className="relative z-10 w-full max-w-lg rounded-xl border border-garis bg-kartu p-5 shadow-2xl sm:p-6">
             <h2 id="judul-hapus-proyek" className="text-lg font-bold text-tinta">Hapus proyek?</h2>
             <p className="mt-2 text-[13.5px] leading-relaxed text-tinta-2">
               Proyek <strong>{nama}</strong> ({projectId}) beserta skenario, penugasan, modul, dan catatan bukti terkait akan dihapus permanen. Berkas bukti di penyimpanan juga akan dihapus. Tindakan ini tidak dapat dibatalkan.
@@ -77,19 +77,15 @@ export function TombolHapusProyek({ projectId, nama }: { projectId: string; nama
               <label htmlFor={`konfirmasi-hapus-${projectId}`} className="mb-1.5 block text-[13px] font-medium text-tinta-2">
                 Ketik <span className="font-mono font-semibold text-tinta">{projectId}</span> untuk melanjutkan
               </label>
-              <input id={`konfirmasi-hapus-${projectId}`} autoComplete="off" autoFocus value={konfirmasi}
+              <Input id={`konfirmasi-hapus-${projectId}`} autoComplete="off" autoFocus value={konfirmasi}
                 onChange={(e) => setKonfirmasi(e.target.value)} disabled={sibuk}
-                className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2.5 font-mono text-[14px] outline-none focus:border-gagal focus-visible:ring-2 focus-visible:ring-gagal" />
-              {galat && <p role="alert" className="mt-2 rounded-md border border-gagal bg-gagal-lembut px-3 py-2 text-[13px] text-gagal">{galat}</p>}
+                className="font-mono focus:border-gagal focus-visible:ring-gagal-lembut" />
+              {galat && <Feedback kind="error" className="mt-2">{galat}</Feedback>}
               <div className="mt-5 flex justify-end gap-2">
-                <button type="button" onClick={tutup} disabled={sibuk}
-                  className="rounded-lg border border-garis-kuat px-3.5 py-2 text-[13px] font-medium text-tinta-2 hover:bg-kanvas disabled:opacity-60">
-                  Batal
-                </button>
-                <button type="submit" disabled={sibuk || konfirmasi.trim() !== projectId} aria-busy={sibuk}
-                  className="inline-flex items-center gap-2 rounded-lg bg-gagal px-3.5 py-2 text-[13px] font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
-                  {sibuk && <Spinner className="h-4 w-4" />}{sibuk ? "Menghapus…" : "Hapus proyek permanen"}
-                </button>
+                <Button onClick={tutup} disabled={sibuk}>Batal</Button>
+                <Button type="submit" variant="danger" busy={sibuk} disabled={konfirmasi.trim() !== projectId}>
+                  {sibuk ? "Menghapus…" : "Hapus proyek permanen"}
+                </Button>
               </div>
             </form>
           </section>

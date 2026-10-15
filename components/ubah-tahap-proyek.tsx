@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { faseUntukProyek, type FasePengujian } from "@/lib/fase-proyek";
 import { Spinner } from "@/components/indikator-proses";
+import { Feedback, Select } from "@/components/ui";
 
 const TAHAP = [
   ["PERSIAPAN", "Persiapan"],
@@ -46,19 +47,19 @@ export function UbahTahapProyek({ projectId, tahap, jenisPengujian }: {
   }
 
   return (
-    <div>
+    <div className="min-w-[190px]">
       <div className="flex items-center gap-2">
         <label htmlFor={`tahap-${projectId}`} className="sr-only">Tahap proyek</label>
-        <select id={`tahap-${projectId}`} value={tahapAktif} disabled={sibuk} aria-busy={sibuk}
-          onChange={(e) => void ubah(e.target.value)}
-          className="rounded-lg border border-garis bg-kartu px-3 py-2 text-[13px] font-semibold text-tinta-2 outline-none focus:border-aksi disabled:cursor-wait disabled:opacity-60">
+        <Select id={`tahap-${projectId}`} value={tahapAktif} disabled={sibuk} aria-busy={sibuk}
+          wrapClassName="w-auto" className="w-auto min-w-[185px] font-semibold text-tinta-2"
+          onChange={(e) => void ubah(e.target.value)}>
           {TAHAP.filter(([value]) => !["SIT", "UAT"].includes(value)
             || faseUntukProyek(jenisPengujian).includes(value as FasePengujian))
             .map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
-        {sibuk && <Spinner className="h-4 w-4 text-aksi" />}
+        </Select>
+        {sibuk && <Spinner className="h-4 w-4 shrink-0 text-aksi" />}
       </div>
-      {pesan && <p role={pesan.galat ? "alert" : "status"} className={`mt-1 max-w-[240px] text-[11.5px] ${pesan.galat ? "text-gagal" : "text-lulus"}`}>{pesan.teks}</p>}
+      {pesan && <Feedback kind={pesan.galat ? "error" : "success"} className="mt-2">{pesan.teks}</Feedback>}
     </div>
   );
 }

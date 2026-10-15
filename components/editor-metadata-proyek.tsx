@@ -1,33 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Spinner } from "@/components/indikator-proses";
 import { useFocusTrap } from "@/components/use-focus-trap";
+import { Button, Feedback, Field, Input, Select, Textarea } from "@/components/ui";
+import { labelJenisPengujian } from "@/lib/fase-proyek";
 
 type MetadataProyek = {
   nama: string;
   aplikasi: string | null;
   modul: string | null;
-  modulAplikasi: string | null;
-  unitBisnis: string | null;
+  jenisPengujian: string;
   ruangLingkup: string | null;
-  sumberAcuan: string | null;
   dasarRegulasi: string | null;
-  lingkungan: string;
-  alamatServer: string | null;
+  alamatPengujian: string | null;
   tahunAnggaran: number | null;
   tanggalMulai: string | Date | null;
   targetSelesai: string | Date | null;
-  versiDokumen: string | null;
-  disusunOleh: string | null;
-  statusDokumen: string | null;
+  pmId: string | null;
 };
 
-type Draft = Record<Exclude<keyof MetadataProyek, "tanggalMulai" | "targetSelesai" | "tahunAnggaran">, string> & {
+type PIC = { id: string; nama: string };
+type Draft = {
+  nama: string;
+  aplikasi: string;
+  modul: string;
+  jenisPengujian: string;
+  ruangLingkup: string;
+  dasarRegulasi: string;
+  alamatPengujian: string;
+  pmId: string;
+  tahunAnggaran: string;
   tanggalMulai: string;
   targetSelesai: string;
-  tahunAnggaran: string;
 };
 
 function tanggalInput(value: string | Date | null): string {
@@ -41,143 +46,211 @@ function buatDraft(nilai: MetadataProyek): Draft {
     ...nilai,
     aplikasi: nilai.aplikasi ?? "",
     modul: nilai.modul ?? "",
-    modulAplikasi: nilai.modulAplikasi ?? "",
-    unitBisnis: nilai.unitBisnis ?? "",
     ruangLingkup: nilai.ruangLingkup ?? "",
-    sumberAcuan: nilai.sumberAcuan ?? "",
     dasarRegulasi: nilai.dasarRegulasi ?? "",
-    alamatServer: nilai.alamatServer ?? "",
-    versiDokumen: nilai.versiDokumen ?? "",
-    disusunOleh: nilai.disusunOleh ?? "",
-    statusDokumen: nilai.statusDokumen ?? "",
+    alamatPengujian: nilai.alamatPengujian ?? "",
+    pmId: nilai.pmId ?? "",
     tahunAnggaran: nilai.tahunAnggaran == null ? "" : String(nilai.tahunAnggaran),
     tanggalMulai: tanggalInput(nilai.tanggalMulai),
     targetSelesai: tanggalInput(nilai.targetSelesai),
   };
 }
 
-export function EditorMetadataProyek({ projectId, nilai }: { projectId: string; nilai: MetadataProyek }) {
+export function EditorMetadataProyek({
+  projectId, nilai, pic,
+}: { projectId: string; nilai: MetadataProyek; pic: PIC[] }) {
   const [buka, setBuka] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => buatDraft(nilai));
   const [sibuk, setSibuk] = useState(false);
   const [galat, setGalat] = useState<string | null>(null);
   const [berhasil, setBerhasil] = useState<string | null>(null);
+  const [konfirmasiBuang, setKonfirmasiBuang] = useState(false);
+  const asal = useRef<Draft>(buatDraft(nilai));
   const router = useRouter();
+  const kotor = JSON.stringify(draft) !== JSON.stringify(asal.current);
 
   const set = (k: keyof Draft, v: string) => setDraft((x) => ({ ...x, [k]: v }));
+  const tutupSekarang = () => {
+    setDraft(buatDraft(nilai));
+    asal.current = buatDraft(nilai);
+    setGalat(null);
+    setKonfirmasiBuang(false);
+    setBuka(false);
+  };
   const tutup = () => {
     if (sibuk) return;
-    setDraft(buatDraft(nilai)); setGalat(null); setBuka(false);
+    if (kotor) { setKonfirmasiBuang(true); return; }
+    tutupSekarang();
   };
-  const dialogRef = useFocusTrap<HTMLElement>(buka, tutup);
+  const dialogRef = useFocusTrap<HTMLElement>(buka && !konfirmasiBuang, tutup);
+  const konfirmasiRef = useFocusTrap<HTMLElement>(konfirmasiBuang, () => setKonfirmasiBuang(false));
+
+  function bukaEditor() {
+    const awal = buatDraft(nilai);
+    asal.current = awal;
+    setDraft(awal);
+    setGalat(null);
+    setBerhasil(null);
+    setKonfirmasiBuang(false);
+    setBuka(true);
+  }
 
   async function simpan(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault(); setSibuk(true); setGalat(null);
+    e.preventDefault();
+    if (!kotor || sibuk) return;
+    setSibuk(true);
+    setGalat(null);
     try {
       const body = {
-        ...draft,
+        aksi: "ubah_metadata",
+        projectId,
+        nama: draft.nama,
+        aplikasi: draft.aplikasi,
+        modul: draft.modul,
+        pmId: draft.pmId || null,
+        ruangLingkup: draft.ruangLingkup,
+        dasarRegulasi: draft.dasarRegulasi,
+        alamatServer: draft.alamatPengujian,
         tahunAnggaran: draft.tahunAnggaran.trim() ? Number(draft.tahunAnggaran) : null,
         tanggalMulai: draft.tanggalMulai || null,
         targetSelesai: draft.targetSelesai || null,
-        aksi: "ubah_metadata", projectId,
       };
-      const r = await fetch("/api/v1/proyek", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      const response = await fetch("/api/v1/proyek", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
-      const hasil = await r.json().catch(() => ({}));
-      if (!r.ok) { setGalat(hasil.pesan ?? "Gagal menyimpan metadata proyek."); return; }
-      setBuka(false); setBerhasil("Metadata proyek berhasil disimpan."); router.refresh();
+      const hasil = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setGalat(hasil.pesan ?? "Gagal menyimpan metadata proyek.");
+        return;
+      }
+      setBuka(false);
+      setBerhasil("Informasi proyek berhasil diperbarui.");
+      router.refresh();
     } catch {
       setGalat("Tidak dapat terhubung. Periksa koneksi lalu coba lagi.");
-    } finally { setSibuk(false); }
+    } finally {
+      setSibuk(false);
+    }
   }
 
   return (
     <>
-      <button type="button" onClick={() => { setDraft(buatDraft(nilai)); setGalat(null); setBerhasil(null); setBuka(true); }}
-        className="rounded-lg border border-garis-kuat bg-kartu px-3 py-2 text-[13px] font-semibold text-tinta-2 hover:border-aksi hover:text-aksi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aksi">
-        Ubah metadata
-      </button>
-      {berhasil && <p role="status" aria-live="polite" className="mt-2 rounded-md border border-lulus/30 bg-lulus-lembut px-3 py-2 text-[12.5px] text-lulus">{berhasil}</p>}
+      <Button variant="secondary" onClick={bukaEditor}>Ubah informasi</Button>
+      {berhasil && <Feedback kind="success" className="mt-2">{berhasil}</Feedback>}
+
       {buka && (
         <div className="fixed inset-0 z-50 flex justify-end">
-          <button type="button" aria-label="Tutup editor metadata" onClick={tutup} className="absolute inset-0 bg-tinta/35" />
+          <button type="button" aria-label="Tutup editor informasi proyek" onClick={tutup} disabled={sibuk}
+            className="absolute inset-0 bg-tinta/40 backdrop-blur-[2px] disabled:cursor-wait" />
           <aside ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="judul-editor-metadata"
-            className="relative z-10 h-full w-full max-w-[720px] overflow-y-auto border-l border-garis bg-kartu shadow-xl">
-            <form onSubmit={simpan} className="flex min-h-full flex-col">
-              <header className="sticky top-0 z-10 border-b border-garis bg-kartu px-6 py-5 sm:px-8">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 id="judul-editor-metadata" className="text-[20px] font-bold tracking-tight text-tinta">Ubah metadata proyek</h2>
-                    <p className="mt-1 text-[13px] text-tinta-2">Perubahan disimpan sebagai riwayat audit proyek.</p>
-                  </div>
-                  <button type="button" onClick={tutup} disabled={sibuk} aria-label="Tutup"
-                    className="rounded-md px-2 py-1 text-lg leading-none text-tinta-3 hover:bg-kanvas disabled:opacity-50">×</button>
+            className="relative z-10 flex h-full w-full max-w-[680px] flex-col border-l border-garis bg-kartu shadow-2xl">
+            <form onSubmit={simpan} className="flex min-h-0 flex-1 flex-col" aria-busy={sibuk}>
+              <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-garis bg-kartu/95 px-5 py-4 backdrop-blur sm:px-7">
+                <div>
+                  <h2 id="judul-editor-metadata" className="text-[19px] font-bold tracking-tight text-tinta">Ubah informasi proyek</h2>
+                  <p className="mt-1 text-[13px] leading-relaxed text-tinta-3">Sunting informasi yang digunakan pada form proyek.</p>
                 </div>
+                <Button variant="ghost" onClick={tutup} disabled={sibuk} aria-label="Tutup" className="h-9 min-h-9 w-9 px-0 text-xl">×</Button>
               </header>
-              <div className="flex-1 space-y-4 px-6 py-5 sm:px-8">
-                <Isian label="Nama proyek" nilai={draft.nama} ubah={(v) => set("nama", v)} wajib autoFocus />
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Isian label="Aplikasi" nilai={draft.aplikasi} ubah={(v) => set("aplikasi", v)} />
-                  <Isian label="Modul" nilai={draft.modul} ubah={(v) => set("modul", v)} />
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Isian label="Unit bisnis / divisi" nilai={draft.unitBisnis} ubah={(v) => set("unitBisnis", v)} />
-                </div>
-                <Isian label="Ruang lingkup" nilai={draft.ruangLingkup} ubah={(v) => set("ruangLingkup", v)} banyak />
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Isian label="Sumber acuan" nilai={draft.sumberAcuan} ubah={(v) => set("sumberAcuan", v)} />
-                  <Isian label="Dasar regulasi" nilai={draft.dasarRegulasi} ubah={(v) => set("dasarRegulasi", v)} />
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="metadata-lingkungan" className="mb-1 block text-[13px] font-medium text-tinta-2">Lingkungan uji</label>
-                    <select id="metadata-lingkungan" value={draft.lingkungan} onChange={(e) => set("lingkungan", e.target.value)}
-                      className="w-full rounded-md border border-garis-kuat bg-white px-3 py-2.5 text-[14px] outline-none focus:border-aksi focus-visible:ring-2 focus-visible:ring-aksi">
-                      {["DEV", "SIT", "UAT", "PROD"].map((v) => <option key={v} value={v}>{v}</option>)}
-                    </select>
+
+              <div className="relative flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-7">
+                <section aria-label="Informasi utama" className="space-y-4">
+                  <Field id="metadata-nama" label="Nama proyek" required>
+                    <Input id="metadata-nama" required autoFocus maxLength={200} value={draft.nama}
+                      onChange={(e) => set("nama", e.target.value)} />
+                  </Field>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field id="metadata-pic" label="PIC" optional>
+                      <Select id="metadata-pic" value={draft.pmId} onChange={(e) => set("pmId", e.target.value)}>
+                        <option value="">— Belum ditentukan —</option>
+                        {pic.map((orang) => <option key={orang.id} value={orang.id}>{orang.nama}</option>)}
+                      </Select>
+                    </Field>
+                    <div className="min-w-0">
+                      <p className="mb-1.5 text-[13px] font-medium text-tinta-2">Jenis pengujian</p>
+                      <p className="flex h-10 items-center rounded-lg border border-garis bg-kanvas px-3 text-[14px] font-medium text-tinta-2">
+                        {labelJenisPengujian(draft.jenisPengujian)}
+                      </p>
+                    </div>
                   </div>
-                  <Isian label="Alamat pengujian" nilai={draft.alamatServer} ubah={(v) => set("alamatServer", v)} />
-                </div>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <Isian label="Tahun anggaran" tipe="number" nilai={draft.tahunAnggaran} ubah={(v) => set("tahunAnggaran", v)} />
-                  <Isian label="Tanggal mulai" tipe="date" nilai={draft.tanggalMulai} ubah={(v) => set("tanggalMulai", v)} />
-                  <Isian label="Target selesai" tipe="date" nilai={draft.targetSelesai} ubah={(v) => set("targetSelesai", v)} />
-                </div>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <Isian label="Versi dokumen" nilai={draft.versiDokumen} ubah={(v) => set("versiDokumen", v)} />
-                  <Isian label="Disusun oleh" nilai={draft.disusunOleh} ubah={(v) => set("disusunOleh", v)} />
-                  <Isian label="Status dokumen" nilai={draft.statusDokumen} ubah={(v) => set("statusDokumen", v)} />
-                </div>
-                {galat && <p role="alert" className="rounded-md border border-gagal bg-gagal-lembut px-3 py-2 text-[13px] text-gagal">{galat}</p>}
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field id="metadata-aplikasi" label="Aplikasi">
+                      <Input id="metadata-aplikasi" maxLength={160} value={draft.aplikasi}
+                        onChange={(e) => set("aplikasi", e.target.value)} />
+                    </Field>
+                    <Field id="metadata-modul" label="Modul">
+                      <Input id="metadata-modul" maxLength={160} value={draft.modul}
+                        onChange={(e) => set("modul", e.target.value)} />
+                    </Field>
+                  </div>
+                  <Field id="metadata-ruang-lingkup" label="Ruang lingkup">
+                    <Textarea id="metadata-ruang-lingkup" rows={3} maxLength={10000} value={draft.ruangLingkup}
+                      onChange={(e) => set("ruangLingkup", e.target.value)} />
+                  </Field>
+                </section>
+
+                <section aria-label="Regulasi dan alamat pengujian" className="space-y-4 border-t border-garis pt-5">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field id="metadata-dasar-regulasi" label="Dasar regulasi">
+                      <Input id="metadata-dasar-regulasi" maxLength={200} value={draft.dasarRegulasi}
+                        onChange={(e) => set("dasarRegulasi", e.target.value)} />
+                    </Field>
+                    <Field id="metadata-alamat-pengujian" label="Alamat pengujian">
+                      <Input id="metadata-alamat-pengujian" maxLength={300} value={draft.alamatPengujian}
+                        onChange={(e) => set("alamatPengujian", e.target.value)} />
+                    </Field>
+                  </div>
+                </section>
+
+                <section aria-label="Jadwal proyek" className="space-y-4 border-t border-garis pt-5">
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <Field id="metadata-tahun-anggaran" label="Tahun anggaran">
+                      <Input id="metadata-tahun-anggaran" type="number" min={1900} max={2200} step={1}
+                        value={draft.tahunAnggaran} onChange={(e) => set("tahunAnggaran", e.target.value)} />
+                    </Field>
+                    <Field id="metadata-tanggal-mulai" label="Tanggal mulai">
+                      <Input id="metadata-tanggal-mulai" type="date" value={draft.tanggalMulai}
+                        onChange={(e) => set("tanggalMulai", e.target.value)} />
+                    </Field>
+                    <Field id="metadata-target-selesai" label="Target selesai">
+                      <Input id="metadata-target-selesai" type="date" value={draft.targetSelesai}
+                        onChange={(e) => set("targetSelesai", e.target.value)} />
+                    </Field>
+                  </div>
+                </section>
+
+                {galat && <Feedback kind="error">{galat}</Feedback>}
               </div>
-              <footer className="sticky bottom-0 flex justify-end gap-3 border-t border-garis bg-kartu px-6 py-4 sm:px-8">
-                <button type="button" disabled={sibuk} onClick={tutup}
-                  className="rounded-md border border-garis-kuat px-4 py-2.5 text-[13.5px] font-medium text-tinta-2 hover:bg-kanvas disabled:opacity-50">Batal</button>
-                <button type="submit" disabled={sibuk} aria-busy={sibuk}
-                  className="inline-flex items-center gap-2 rounded-md bg-aksi px-5 py-2.5 text-[13.5px] font-semibold text-white hover:bg-aksi/90 disabled:cursor-wait disabled:opacity-60">
-                  {sibuk && <Spinner className="h-4 w-4" />}{sibuk ? "Menyimpan…" : "Simpan perubahan"}
-                </button>
+
+              {konfirmasiBuang && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-tinta/30 p-4">
+                  <section ref={konfirmasiRef} tabIndex={-1} role="alertdialog" aria-labelledby="judul-buang-draf"
+                    className="w-full max-w-sm rounded-xl border border-garis bg-kartu p-5 shadow-2xl">
+                    <h3 id="judul-buang-draf" className="text-[16px] font-semibold text-tinta">Buang perubahan?</h3>
+                    <p className="mt-1.5 text-[13px] leading-relaxed text-tinta-2">Perubahan yang belum disimpan akan hilang.</p>
+                    <div className="mt-4 flex justify-end gap-2">
+                      <Button autoFocus onClick={() => setKonfirmasiBuang(false)}>Lanjutkan mengedit</Button>
+                      <Button variant="danger" onClick={tutupSekarang}>Buang perubahan</Button>
+                    </div>
+                  </section>
+                </div>
+              )}
+
+              <footer className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-garis bg-kartu/95 px-5 py-4 backdrop-blur sm:px-7">
+                <p className="text-[12px] text-tinta-3">{kotor ? "Ada perubahan yang belum disimpan." : "Belum ada perubahan."}</p>
+                <div className="flex justify-end gap-2">
+                  <Button onClick={tutup} disabled={sibuk}>Batal</Button>
+                  <Button type="submit" variant="primary" busy={sibuk} disabled={!kotor}>
+                    {sibuk ? "Menyimpan…" : "Simpan perubahan"}
+                  </Button>
+                </div>
               </footer>
             </form>
           </aside>
         </div>
       )}
     </>
-  );
-}
-
-function Isian({ label, nilai, ubah, tipe = "text", wajib = false, banyak = false, autoFocus = false }: {
-  label: string; nilai: string; ubah: (v: string) => void; tipe?: string; wajib?: boolean; banyak?: boolean; autoFocus?: boolean;
-}) {
-  const id = `meta-${label.toLowerCase().replace(/[^a-z]+/g, "-")}`;
-  return (
-    <div>
-      <label htmlFor={id} className="mb-1 block text-[13px] font-medium text-tinta-2">{label}{wajib && <span className="text-gagal"> *</span>}</label>
-      {banyak ? <textarea id={id} rows={3} value={nilai} onChange={(e) => ubah(e.target.value)}
-        className="w-full resize-y rounded-md border border-garis-kuat px-3 py-2.5 text-[14px] outline-none focus:border-aksi focus-visible:ring-2 focus-visible:ring-aksi" /> :
-        <input id={id} type={tipe} autoFocus={autoFocus} required={wajib} value={nilai} onChange={(e) => ubah(e.target.value)}
-          className="w-full rounded-md border border-garis-kuat px-3 py-2.5 text-[14px] outline-none focus:border-aksi focus-visible:ring-2 focus-visible:ring-aksi" />}
-    </div>
   );
 }

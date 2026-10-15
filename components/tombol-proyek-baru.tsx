@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Spinner } from "@/components/indikator-proses";
 import { useFocusTrap } from "@/components/use-focus-trap";
+import { Button, Feedback, Field, Input, Select } from "@/components/ui";
 
 /** Form proyek baru: hanya metadata yang dibutuhkan untuk memulai pengujian. */
 export function TombolProyekBaru({ pic }: { pic: { id: string; nama: string }[] }) {
@@ -11,7 +11,8 @@ export function TombolProyekBaru({ pic }: { pic: { id: string; nama: string }[] 
   const [sibuk, setSibuk] = useState(false);
   const [galat, setGalat] = useState<string | null>(null);
   const router = useRouter();
-  const dialogRef = useFocusTrap<HTMLElement>(buka, () => { if (!sibuk) setBuka(false); });
+  const tutup = () => { if (!sibuk) setBuka(false); };
+  const dialogRef = useFocusTrap<HTMLElement>(buka, tutup);
 
   const [f, setF] = useState({
     nama: "", pmId: "", aplikasi: "", modul: "", ruangLingkup: "", jenisPengujian: "",
@@ -21,22 +22,16 @@ export function TombolProyekBaru({ pic }: { pic: { id: string; nama: string }[] 
   const set = (k: string, v: string) => setF((x) => ({ ...x, [k]: v }));
 
   if (!buka) {
-    return (
-      <button type="button" onClick={() => setBuka(true)}
-        className="sentuh rounded-md bg-aksi px-4 text-[14px] font-medium text-white">
-        Proyek baru
-      </button>
-    );
+    return <Button variant="primary" onClick={() => { setGalat(null); setBuka(true); }}>Proyek baru</Button>;
   }
 
   return (
     <>
-      <button type="button" onClick={() => { if (!sibuk) setBuka(false); }} disabled={sibuk}
-        aria-label="Tutup formulir"
-        className="fixed inset-0 z-30 bg-tinta/10" />
+      <button type="button" onClick={tutup} disabled={sibuk} aria-label="Tutup formulir proyek baru"
+        className="fixed inset-0 z-30 bg-tinta/40 backdrop-blur-[2px] disabled:cursor-wait" />
       <aside ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="judul-proyek-baru"
-        className="fixed right-0 top-0 z-40 h-screen w-full overflow-y-auto border-l border-garis bg-kartu sm:w-[46%] sm:max-w-[640px]">
-        <form className="px-7 py-6"
+        className="fixed right-0 top-0 z-40 flex h-screen w-full flex-col border-l border-garis bg-kartu shadow-2xl sm:max-w-[640px]">
+        <form className="flex min-h-0 flex-1 flex-col" aria-busy={sibuk}
           onSubmit={async (e) => {
             e.preventDefault();
             setSibuk(true); setGalat(null);
@@ -58,72 +53,63 @@ export function TombolProyekBaru({ pic }: { pic: { id: string; nama: string }[] 
               setGalat("Tidak dapat terhubung. Proyek belum dibuat; coba lagi.");
             } finally { setSibuk(false); }
           }}>
-          <h2 id="judul-proyek-baru" className="mb-1 text-[20px] font-bold tracking-tight text-tinta">Proyek baru</h2>
-          <p className="mb-5 text-[13.5px] leading-relaxed text-tinta-2">
-            Pilih satu jenis pengujian. Proyek SIT hanya menampilkan SIT; proyek UAT hanya menampilkan UAT.
-          </p>
-
-          <div className="space-y-4">
-            <Isian label="Nama proyek" wajib nilai={f.nama} ubah={(v) => set("nama", v)}
-              contoh="Penyesuaian OM-SPAN TKD sesuai PER-4/PB/2026" maksimal={200} autoFocus />
+          <header className="flex items-start justify-between gap-4 border-b border-garis px-5 py-4 sm:px-7">
             <div>
-              <label htmlFor="p-pm-id" className="mb-1 block text-[13.5px] font-medium text-tinta-2">
-                PIC <span className="font-normal text-tinta-3">(opsional)</span>
-              </label>
-              <select id="p-pm-id" value={f.pmId} onChange={(e) => set("pmId", e.target.value)}
-                className="w-full rounded-md border border-garis-kuat bg-white px-3 py-2 text-[16px] outline-none focus:border-aksi">
+              <h2 id="judul-proyek-baru" className="text-[20px] font-bold tracking-tight text-tinta">Proyek baru</h2>
+              <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-tinta-2">
+                Pilih satu jenis pengujian. Proyek SIT hanya menampilkan SIT; proyek UAT hanya menampilkan UAT.
+              </p>
+            </div>
+            <Button variant="ghost" onClick={tutup} disabled={sibuk} aria-label="Tutup" className="h-9 min-h-9 w-9 px-0 text-xl">×</Button>
+          </header>
+
+          <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5 sm:px-7">
+            <Field id="p-nama-proyek" label="Nama proyek" required>
+              <Input id="p-nama-proyek" required maxLength={200} value={f.nama} placeholder="Penyesuaian OM-SPAN TKD sesuai PER-4/PB/2026"
+                autoFocus onChange={(e) => set("nama", e.target.value)} />
+            </Field>
+            <Field id="p-pm-id" label="PIC" optional>
+              <Select id="p-pm-id" value={f.pmId} onChange={(e) => set("pmId", e.target.value)}>
                 <option value="">— Belum ditentukan —</option>
                 {pic.map((orang) => <option key={orang.id} value={orang.id}>{orang.nama}</option>)}
-              </select>
-            </div>
+              </Select>
+            </Field>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Isian label="Aplikasi" nilai={f.aplikasi} ubah={(v) => set("aplikasi", v)}
+              <Isian id="p-aplikasi" label="Aplikasi" nilai={f.aplikasi} ubah={(v) => set("aplikasi", v)}
                 contoh="OM-SPAN TKD" maksimal={160} />
-              <Isian label="Modul" nilai={f.modul} ubah={(v) => set("modul", v)}
+              <Isian id="p-modul" label="Modul" nilai={f.modul} ubah={(v) => set("modul", v)}
                 contoh="Penyaluran TKD" maksimal={160} />
             </div>
-            <Isian label="Ruang lingkup" nilai={f.ruangLingkup} ubah={(v) => set("ruangLingkup", v)}
+            <Isian id="p-ruang-lingkup" label="Ruang lingkup" nilai={f.ruangLingkup} ubah={(v) => set("ruangLingkup", v)}
               contoh="Poin A s.d. F" maksimal={10000} />
-            <div>
-              <label htmlFor="p-jenis-pengujian" className="mb-1 block text-[13.5px] font-medium text-tinta-2">
-                Jenis pengujian <span className="text-gagal">*</span>
-              </label>
-              <select id="p-jenis-pengujian" required value={f.jenisPengujian}
-                onChange={(e) => set("jenisPengujian", e.target.value)}
-                className="w-full rounded-md border border-garis-kuat bg-white px-3 py-2 text-[16px] outline-none focus:border-aksi">
+            <Field id="p-jenis-pengujian" label="Jenis pengujian" required>
+              <Select id="p-jenis-pengujian" required value={f.jenisPengujian} onChange={(e) => set("jenisPengujian", e.target.value)}>
                 <option value="" disabled>Pilih SIT atau UAT</option>
                 <option value="SIT">SIT</option>
                 <option value="UAT">UAT</option>
-              </select>
+              </Select>
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Isian id="p-dasar-regulasi" label="Dasar regulasi" nilai={f.dasarRegulasi} ubah={(v) => set("dasarRegulasi", v)}
+                contoh="PER-4/PB/2026" maksimal={200} />
+              <Isian id="p-alamat-pengujian" label="Alamat pengujian" nilai={f.alamatPengujian} ubah={(v) => set("alamatPengujian", v)}
+                contoh="https://tkd-dev.example.id" maksimal={300} />
             </div>
-            <Isian label="Dasar regulasi" nilai={f.dasarRegulasi} ubah={(v) => set("dasarRegulasi", v)}
-              contoh="PER-4/PB/2026" maksimal={200} />
-            <Isian label="Alamat pengujian" nilai={f.alamatPengujian} ubah={(v) => set("alamatPengujian", v)}
-              contoh="https://tkd-dev.example.id" maksimal={300} />
             <div className="grid gap-4 sm:grid-cols-3">
-              <Isian label="Tahun anggaran" tipe="number" nilai={f.tahunAnggaran} ubah={(v) => set("tahunAnggaran", v)}
+              <Isian id="p-tahun-anggaran" label="Tahun anggaran" tipe="number" nilai={f.tahunAnggaran} ubah={(v) => set("tahunAnggaran", v)}
                 min={1900} max={2200} />
-              <Isian label="Tanggal mulai" tipe="date" nilai={f.tanggalMulai} ubah={(v) => set("tanggalMulai", v)} />
-              <Isian label="Target selesai" tipe="date" nilai={f.targetSelesai} ubah={(v) => set("targetSelesai", v)} />
+              <Isian id="p-tanggal-mulai" label="Tanggal mulai" tipe="date" nilai={f.tanggalMulai} ubah={(v) => set("tanggalMulai", v)} />
+              <Isian id="p-target-selesai" label="Target selesai" tipe="date" nilai={f.targetSelesai} ubah={(v) => set("targetSelesai", v)} />
             </div>
+            {galat && <Feedback kind="error">{galat}</Feedback>}
           </div>
 
-          {galat && (
-            <p role="alert" className="mt-4 rounded-md border border-gagal bg-gagal-lembut px-3 py-2 text-[14px] text-gagal">
-              {galat}
-            </p>
-          )}
-
-          <div className="mt-6 flex gap-3">
-            <button type="submit" disabled={sibuk} aria-busy={sibuk}
-              className="sentuh inline-flex items-center justify-center gap-2 rounded-md bg-aksi px-5 text-[14.5px] font-medium text-white disabled:cursor-wait disabled:opacity-60">
-              {sibuk && <Spinner className="h-4 w-4" />}{sibuk ? "Menyimpan…" : "Simpan proyek"}
-            </button>
-            <button type="button" disabled={sibuk} onClick={() => setBuka(false)}
-              className="sentuh rounded-md border border-garis px-4 text-[14px] text-tinta-2 hover:border-garis-kuat">
-              Batal
-            </button>
-          </div>
+          <footer className="flex justify-end gap-2 border-t border-garis bg-kartu/95 px-5 py-4 backdrop-blur sm:px-7">
+            <Button onClick={tutup} disabled={sibuk}>Batal</Button>
+            <Button type="submit" variant="primary" busy={sibuk}>
+              {sibuk ? "Menyimpan…" : "Simpan proyek"}
+            </Button>
+          </footer>
         </form>
       </aside>
     </>
@@ -131,22 +117,16 @@ export function TombolProyekBaru({ pic }: { pic: { id: string; nama: string }[] 
 }
 
 function Isian({
-  label, nilai, ubah, contoh, wajib, tipe = "text", maksimal, min, max, autoFocus = false,
+  id, label, nilai, ubah, contoh, tipe = "text", maksimal, min, max,
 }: {
-  label: string; nilai: string; ubah: (v: string) => void;
-  contoh?: string; wajib?: boolean; tipe?: string; maksimal?: number; min?: number; max?: number;
-  autoFocus?: boolean;
+  id: string; label: string; nilai: string; ubah: (v: string) => void;
+  contoh?: string; tipe?: string; maksimal?: number; min?: number; max?: number;
 }) {
-  const id = `p-${label.toLowerCase().replace(/[^a-z]+/g, "-")}`;
   return (
-    <div>
-      <label htmlFor={id} className="mb-1 block text-[13.5px] font-medium text-tinta-2">
-        {label}{wajib && <span className="text-gagal"> *</span>}
-      </label>
-      <input id={id} type={tipe} required={wajib} value={nilai} placeholder={contoh} autoFocus={autoFocus}
+    <Field id={id} label={label}>
+      <Input id={id} type={tipe} value={nilai} placeholder={contoh}
         maxLength={maksimal} min={min} max={max} step={tipe === "number" ? 1 : undefined}
-        onChange={(e) => ubah(e.target.value)}
-        className="w-full rounded-md border border-garis-kuat px-3 py-2 text-[16px] outline-none focus:border-aksi" />
-    </div>
+        onChange={(e) => ubah(e.target.value)} />
+    </Field>
   );
 }

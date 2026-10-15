@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/format";
 import { Spinner } from "@/components/indikator-proses";
 import { useFocusTrap } from "@/components/use-focus-trap";
+import { Button, Feedback } from "@/components/ui";
 
 type Bukti = {
   id: string; path: string; nama_asli: string | null;
@@ -205,31 +206,26 @@ export function BuktiSkenario({
                 // tersendat kalau beberapa unggahan besar jalan bersamaan.
                 void (async () => { for (const f of fs) await unggah(f); })();
               }} />
-            <button type="button" disabled={!!sibuk} aria-busy={!!sibuk}
+            <Button type="button" disabled={!!sibuk} busy={!!sibuk}
               onClick={() => inputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 rounded border border-garis px-2.5 py-1 text-[13px] font-medium text-tinta-2 hover:border-garis-kuat disabled:cursor-wait disabled:opacity-50">
-              {sibuk && <Spinner className="h-3.5 w-3.5" />}{sibuk ? "Mengunggah…" : "Tambah bukti"}
-            </button>
+              className="min-h-9 px-3 py-1.5 text-[13px]">
+              {sibuk ? "Mengunggah…" : "Tambah bukti"}
+            </Button>
           </>
         )}
       </div>
 
       {galat && (
-        <p role="alert" className="mb-2 rounded border border-gagal bg-gagal-lembut px-2.5 py-1.5 text-[13px] text-gagal">
-          {galat}
-        </p>
+        <Feedback kind="error" className="mb-2">{galat}</Feedback>
       )}
-      {sukses && <p role="status" aria-live="polite" className="mb-2 rounded border border-lulus/30 bg-lulus-lembut px-2.5 py-1.5 text-[13px] text-lulus">{sukses}</p>}
+      {sukses && <Feedback kind="success" className="mb-2">{sukses}</Feedback>}
 
       {muat ? (
         <p role="status" className="inline-flex items-center gap-2 text-[13px] text-tinta-3"><Spinner className="h-4 w-4" />Memuat bukti…</p>
       ) : galat && daftar.length === 0 ? (
         <div className="rounded border border-dashed border-garis px-3 py-4 text-center">
           <p className="text-[13px] text-tinta-3">Daftar bukti belum bisa ditampilkan.</p>
-          <button type="button" onClick={() => void ambil()} disabled={muat} aria-busy={muat}
-            className="sentuh mt-2 inline-flex items-center gap-2 rounded border border-garis px-3 text-[12.5px] font-medium text-tinta-2 disabled:opacity-50">
-            {muat && <Spinner className="h-3.5 w-3.5" />}Coba lagi
-          </button>
+          <Button type="button" onClick={() => void ambil()} busy={muat} className="mt-2 min-h-8 px-3 py-1 text-[12.5px]">Coba lagi</Button>
         </div>
       ) : daftar.length === 0 ? (
         <p className="rounded border border-dashed border-garis px-3 py-4 text-center text-[13px] text-tinta-3">
@@ -249,11 +245,11 @@ export function BuktiSkenario({
                       loading="lazy" className="aspect-[4/3] w-full object-cover" />
                   </button>
                   {bolehHapus && (
-                    <button type="button" onClick={() => { setGalat(null); setKonfirmasiHapus(b); }} disabled={!!sibuk} aria-busy={sibuk === b.id}
+                    <Button type="button" variant="danger-quiet" onClick={() => { setGalat(null); setKonfirmasiHapus(b); }} disabled={!!sibuk} busy={sibuk === b.id}
                       aria-label={`Hapus ${b.nama_asli ?? "bukti"}`}
-                      className="absolute right-1 top-1 inline-flex items-center gap-1 rounded bg-kartu/95 px-1.5 py-0.5 text-[11px] font-medium text-gagal opacity-0 shadow-sm transition-opacity focus:opacity-100 group-hover:opacity-100">
-                      {sibuk === b.id && <Spinner className="h-3 w-3" />}{sibuk === b.id ? "Menghapus…" : "Hapus"}
-                    </button>
+                      className="absolute right-1 top-1 min-h-7 rounded-md bg-kartu/95 px-2 py-1 text-[11px] font-medium opacity-0 shadow-sm transition-opacity focus:opacity-100 group-hover:opacity-100">
+                      {sibuk === b.id ? "Menghapus…" : "Hapus"}
+                    </Button>
                   )}
                 </li>
               ))}
@@ -271,11 +267,11 @@ export function BuktiSkenario({
                     {b.ukuran ? `${Math.round(b.ukuran / 1024)} KB` : ""}
                   </span>
                   {bolehHapus && (
-                    <button type="button" onClick={() => { setGalat(null); setKonfirmasiHapus(b); }} disabled={!!sibuk} aria-busy={sibuk === b.id}
+                    <Button type="button" variant="danger-quiet" onClick={() => { setGalat(null); setKonfirmasiHapus(b); }} disabled={!!sibuk} busy={sibuk === b.id}
                       aria-label={`Hapus ${b.nama_asli ?? "berkas"}`}
-                      className="inline-flex shrink-0 items-center gap-1 text-[12px] text-tinta-3 hover:text-gagal">
-                      {sibuk === b.id && <Spinner className="h-3 w-3" />}{sibuk === b.id ? "Menghapus…" : "Hapus"}
-                    </button>
+                      className="min-h-8 shrink-0 px-2 py-1 text-[12px] text-tinta-3 hover:text-gagal">
+                      {sibuk === b.id ? "Menghapus…" : "Hapus"}
+                    </Button>
                   )}
                 </li>
               ))}
@@ -289,22 +285,20 @@ export function BuktiSkenario({
           <button type="button" aria-label="Tutup konfirmasi hapus bukti" disabled={!!sibuk}
             onClick={() => { setKonfirmasiHapus(null); setGalat(null); }}
             className="absolute inset-0 bg-tinta/45 disabled:cursor-wait" />
-          <section ref={hapusDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="judul-hapus-bukti"
-            className="relative z-10 w-full max-w-lg rounded-xl border border-garis bg-kartu p-5 shadow-xl sm:p-6">
+            <section ref={hapusDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="judul-hapus-bukti"
+            className="relative z-10 w-full max-w-lg rounded-xl border border-garis bg-kartu p-5 shadow-2xl sm:p-6">
             <h2 id="judul-hapus-bukti" className="text-lg font-bold text-tinta">Hapus bukti?</h2>
             <p className="mt-2 break-words text-[13.5px] leading-relaxed text-tinta-2">
               Bukti <strong>{konfirmasiHapus.nama_asli ?? "berkas"}</strong> akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.
             </p>
-            {galat && <p role="alert" className="mt-3 rounded-md border border-gagal bg-gagal-lembut px-3 py-2 text-[13px] text-gagal">{galat}</p>}
+            {galat && <Feedback kind="error" className="mt-3">{galat}</Feedback>}
             <div className="mt-5 flex justify-end gap-2">
-              <button type="button" autoFocus disabled={!!sibuk}
+              <Button type="button" autoFocus disabled={!!sibuk}
                 onClick={() => { setKonfirmasiHapus(null); setGalat(null); }}
-                className="rounded-lg border border-garis-kuat px-3.5 py-2 text-[13px] font-medium text-tinta-2 hover:bg-kanvas disabled:opacity-60">Batal</button>
-              <button type="button" disabled={!!sibuk} aria-busy={!!sibuk}
+                className="text-[13px]">Batal</Button>
+              <Button type="button" variant="danger" busy={!!sibuk}
                 onClick={() => void hapus(konfirmasiHapus)}
-                className="inline-flex items-center gap-2 rounded-lg bg-gagal px-3.5 py-2 text-[13px] font-semibold text-white disabled:cursor-wait disabled:opacity-60">
-                {sibuk && <Spinner className="h-4 w-4" />}{sibuk ? "Menghapus…" : "Hapus bukti"}
-              </button>
+                className="text-[13px]">{sibuk ? "Menghapus…" : "Hapus bukti"}</Button>
             </div>
           </section>
         </div>

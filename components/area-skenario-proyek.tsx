@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { TabelSkenario, type Modul, type Orang, type Skenario } from "@/components/tabel-skenario";
-import { Spinner } from "@/components/indikator-proses";
+import { useFocusTrap } from "@/components/use-focus-trap";
+import { Button, Feedback } from "@/components/ui";
 import type { FasePengujian } from "@/lib/fase-proyek";
 
 type Statistik = { total: number; lulus: number; gagal: number; tertunda: number; belum: number };
@@ -29,10 +31,13 @@ export function AreaSkenarioProyek({
   const [statistik, setStatistik] = useState(statistikAwal);
   const [menyegarkan, setMenyegarkan] = useState(false);
   const [drafAktif, setDrafAktif] = useState(false);
-  const [pesan, setPesan] = useState<{ jenis: "status" | "galat"; teks: string } | null>(null);
+  const [pesan, setPesan] = useState<{ jenis: "status" | "galat" | "peringatan"; teks: string } | null>(null);
+  const [tautanTertunda, setTautanTertunda] = useState<string | null>(null);
   const pengendali = useRef<AbortController | null>(null);
   const pengaturRefresh = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshTertunda = useRef(false);
+  const router = useRouter();
+  const dialogNavigasiRef = useFocusTrap<HTMLElement>(tautanTertunda !== null, () => setTautanTertunda(null));
 
   useEffect(() => {
     setSkenario(skenarioAwal);
@@ -42,7 +47,7 @@ export function AreaSkenarioProyek({
   const segarkan = useCallback(async (manual: boolean) => {
     if (drafAktif) {
       refreshTertunda.current = true;
-      if (manual) setPesan({ jenis: "status", teks: "Selesaikan atau buang draf skenario sebelum memperbarui data." });
+      if (manual) setPesan({ jenis: "peringatan", teks: "Selesaikan atau buang draf skenario sebelum memperbarui data." });
       return;
     }
     pengendali.current?.abort();
@@ -100,10 +105,9 @@ export function AreaSkenarioProyek({
         const tautan = target.closest("nav a[href]") as HTMLAnchorElement | null;
         if (!tautan || tautan.target === "_blank" || !tautan.href.startsWith(window.location.origin)) return;
         if (tautan.href === window.location.href) return;
-        if (!window.confirm("Ada draf skenario yang belum disimpan. Tinggalkan halaman dan buang draf?")) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
+        event.preventDefault();
+        event.stopPropagation();
+        setTautanTertunda(tautan.href);
       };
       window.addEventListener("beforeunload", jagaKeluar);
       document.addEventListener("click", jagaNavigasi, true);
@@ -142,24 +146,23 @@ export function AreaSkenarioProyek({
       <section aria-label={`Ringkasan fase ${fase}`} aria-busy={menyegarkan} className="mb-5">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <p className="text-[12px] font-semibold uppercase tracking-wide text-tinta-3">Ringkasan fase {fase}</p>
-          <button type="button" onClick={() => void segarkan(true)} disabled={menyegarkan || drafAktif}
-            aria-busy={menyegarkan}
+          <Button type="button" variant="secondary" onClick={() => void segarkan(true)} disabled={drafAktif}
+            busy={menyegarkan}
             title={drafAktif ? "Selesaikan atau buang draf sebelum refresh" : undefined}
-            className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-garis-kuat bg-kartu px-3 py-1.5 text-[12.5px] font-semibold text-tinta-2 transition-colors hover:border-aksi hover:text-aksi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aksi disabled:cursor-wait disabled:opacity-60">
-            {menyegarkan ? <Spinner className="h-4 w-4" /> : (
+            className="min-h-9 px-3 py-1.5 text-[12.5px]">
+            {!menyegarkan && (
               <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-4 w-4">
                 <path d="M20 7v5h-5M4 17v-5h5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
                 <path d="M5.6 9a7 7 0 0 1 12.1-2.3L20 12M4 12l2.3 5.3A7 7 0 0 0 18.4 15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
               </svg>
             )}
             {menyegarkan ? "Memperbarui…" : drafAktif ? "Draf belum disimpan" : "Refresh tabel & statistik"}
-          </button>
+          </Button>
         </div>
         {pesan && (
-          <p role={pesan.jenis === "galat" ? "alert" : "status"} aria-live={pesan.jenis === "galat" ? "assertive" : "polite"}
-            className={`mb-2 rounded-lg border px-3 py-2 text-[12.5px] ${pesan.jenis === "galat" ? "border-gagal/40 bg-gagal-lembut text-gagal" : "border-lulus/30 bg-lulus-lembut text-lulus"}`}>
+          <Feedback kind={pesan.jenis === "galat" ? "error" : pesan.jenis === "peringatan" ? "warning" : "success"} className="mb-2">
             {pesan.teks}
-          </p>
+          </Feedback>
         )}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {kartu.map(([label, nilai, warna]) => (
@@ -196,6 +199,28 @@ export function AreaSkenarioProyek({
         onDataMutasi={jadwalkanRefresh}
         onDraftChange={setDrafAktif}
       />
+      {tautanTertunda && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-tinta/50 p-4 backdrop-blur-[2px]">
+          <section ref={dialogNavigasiRef} tabIndex={-1} role="alertdialog" aria-modal="true" aria-labelledby="judul-tinggalkan-draf"
+            className="w-full max-w-sm rounded-xl border border-garis bg-kartu p-5 shadow-2xl">
+            <h2 id="judul-tinggalkan-draf" className="text-[16px] font-semibold text-tinta">Tinggalkan draf?</h2>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-tinta-2">Ada perubahan skenario yang belum disimpan. Jika melanjutkan, draf tersebut akan dibuang.</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button autoFocus onClick={() => setTautanTertunda(null)}>Tetap di halaman</Button>
+              <Button variant="danger" onClick={() => {
+                const tujuan = tautanTertunda;
+                setTautanTertunda(null);
+                if (tujuan) {
+                  const url = new URL(tujuan);
+                  router.push(`${url.pathname}${url.search}${url.hash}`);
+                }
+              }}>
+                Buang draf &amp; lanjutkan
+              </Button>
+            </div>
+          </section>
+        </div>
+      )}
     </>
   );
 }
