@@ -52,6 +52,12 @@ export default async function HalamanProyek() {
     ORDER BY p.dibuat_pada DESC
   `)) as unknown as Baris[];
 
+  const calonPIC = dapatMengelola
+    ? (await klienMentah.unsafe(
+      `SELECT id::text AS id, nama FROM th_users WHERE aktif = true ORDER BY nama`,
+    )) as unknown as { id: string; nama: string }[]
+    : [];
+
   return (
     <>
       <Nav aktif="proyek" peran={saya.peran} />
@@ -65,7 +71,7 @@ export default async function HalamanProyek() {
                 : `${daftar.length} proyek yang Anda menjadi anggotanya`}
             </p>
           </div>
-          {dapatMengelola && <TombolProyekBaru />}
+          {dapatMengelola && <TombolProyekBaru pic={calonPIC} />}
         </header>
 
         {daftar.length === 0 ? (

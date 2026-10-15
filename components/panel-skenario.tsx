@@ -24,6 +24,22 @@ function simpanCacheRiwayat(id: string, versi: string, riwayat: Riwayat[]) {
   CACHE_RIWAYAT.set(id, { versi, riwayat });
 }
 
+type DrafSkenario = {
+  judul: string; status: string; langkah_pengujian: string;
+  hasil_diharapkan: string; hasil_aktual: string; catatan_tindak_lanjut: string;
+};
+
+function bentukDraf(s: Skenario): DrafSkenario {
+  return {
+    judul: s.judul,
+    status: s.status,
+    langkah_pengujian: s.langkah_pengujian ?? "",
+    hasil_diharapkan: s.hasil_diharapkan ?? "",
+    hasil_aktual: s.hasil_aktual ?? "",
+    catatan_tindak_lanjut: s.catatan_tindak_lanjut ?? "",
+  };
+}
+
 /**
  * Panel detail skenario.
  *
@@ -46,17 +62,82 @@ export function PanelSkenario({
   const [riwayat, setRiwayat] = useState<Riwayat[]>(() => CACHE_RIWAYAT.get(skenario.id)?.riwayat ?? []);
   const [riwayatMuat, setRiwayatMuat] = useState(() => !CACHE_RIWAYAT.has(skenario.id));
   const [riwayatGalat, setRiwayatGalat] = useState<string | null>(null);
-  const drafKotor = useRef(new Set<string>());
-  const [adaDrafKotor, setAdaDrafKotor] = useState(false);
-  const st = STATUS_UJI[skenario.status as keyof typeof STATUS_UJI] ?? STATUS_UJI.PENDING;
-
-  const tandaiDraf = (kunci: string, kotor: boolean) => {
-    if (kotor) drafKotor.current.add(kunci);
-    else drafKotor.current.delete(kunci);
-    setAdaDrafKotor(drafKotor.current.size > 0);
+  const versiDrafSebelumnya = useRef(skenario);
+  const [draf, setDraf] = useState<DrafSkenario>(() => bentukDraf(skenario));
+  const [editorRevision, setEditorRevision] = useState(0);
+  const [simpanSibuk, setSimpanSibuk] = useState(false);
+  const [simpanInfo, setSimpanInfo] = useState<{ jenis: "galat" | "info"; teks: string } | null>(null);
+  const kotor = {
+    judul: draf.judul !== skenario.judul,
+    status: draf.status !== skenario.status,
+    langkah_pengujian: draf.langkah_pengujian !== (skenario.langkah_pengujian ?? ""),
+    hasil_diharapkan: draf.hasil_diharapkan !== (skenario.hasil_diharapkan ?? ""),
+    hasil_aktual: draf.hasil_aktual !== (skenario.hasil_aktual ?? ""),
+    catatan_tindak_lanjut: draf.catatan_tindak_lanjut !== (skenario.catatan_tindak_lanjut ?? ""),
   };
+  const adaDrafKotor = Object.values(kotor).some(Boolean);
+  const st = STATUS_UJI[draf.status as keyof typeof STATUS_UJI] ?? STATUS_UJI.PENDING;
+
+  // Jika data berubah dari tempat lain, perbarui field yang belum disentuh,
+  // tetapi pertahankan draf lokal untuk field yang sedang diedit.
+  useEffect(() => {
+    const sebelumnya = versiDrafSebelumnya.current;
+    if (sebelumnya.versi === skenario.versi) return;
+    setDraf((saatIni) => ({
+      judul: saatIni.judul === sebelumnya.judul ? skenario.judul : saatIni.judul,
+      status: saatIni.status === sebelumnya.status ? skenario.status : saatIni.status,
+      langkah_pengujian: saatIni.langkah_pengujian === (sebelumnya.langkah_pengujian ?? "")
+        ? (skenario.langkah_pengujian ?? "") : saatIni.langkah_pengujian,
+      hasil_diharapkan: saatIni.hasil_diharapkan === (sebelumnya.hasil_diharapkan ?? "")
+        ? (skenario.hasil_diharapkan ?? "") : saatIni.hasil_diharapkan,
+      hasil_aktual: saatIni.hasil_aktual === (sebelumnya.hasil_aktual ?? "")
+        ? (skenario.hasil_aktual ?? "") : saatIni.hasil_aktual,
+      catatan_tindak_lanjut: saatIni.catatan_tindak_lanjut === (sebelumnya.catatan_tindak_lanjut ?? "")
+        ? (skenario.catatan_tindak_lanjut ?? "") : saatIni.catatan_tindak_lanjut,
+    }));
+    versiDrafSebelumnya.current = skenario;
+  }, [skenario]);
+
+  function ubahDraf<K extends keyof DrafSkenario>(kunci: K, nilai: DrafSkenario[K]) {
+    setDraf((x) => ({ ...x, [kunci]: nilai }));
+    setSimpanInfo(null);
+  }
+
+  async function simpanSemua() {
+    if (!adaDrafKotor || simpanSibuk) return;
+    const tambalan: Partial<Skenario> = {};
+    if (kotor.judul) tambalan.judul = draf.judul;
+    if (kotor.status) tambalan.status = draf.status;
+    if (kotor.langkah_pengujian) tambalan.langkah_pengujian = draf.langkah_pengujian;
+    if (kotor.hasil_diharapkan) tambalan.hasil_diharapkan = draf.hasil_diharapkan;
+    if (kotor.hasil_aktual) tambalan.hasil_aktual = draf.hasil_aktual;
+    if (kotor.catatan_tindak_lanjut) tambalan.catatan_tindak_lanjut = draf.catatan_tindak_lanjut;
+
+    setSimpanSibuk(true);
+    setSimpanInfo(null);
+    try {
+      const berhasil = await onUbah(tambalan);
+      if (berhasil) {
+        setSimpanInfo({ jenis: "info", teks: "Semua perubahan berhasil disimpan." });
+        setEditorRevision((x) => x + 1);
+      } else {
+        setSimpanInfo({ jenis: "galat", teks: "Penyimpanan gagal. Draf tetap tersedia; periksa pesan pada halaman." });
+      }
+    } catch {
+      setSimpanInfo({ jenis: "galat", teks: "Tidak dapat menyimpan. Draf tetap tersedia; coba lagi." });
+    } finally {
+      setSimpanSibuk(false);
+    }
+  }
+
+  function batalkanSemua() {
+    setDraf(bentukDraf(skenario));
+    setSimpanInfo(null);
+    setEditorRevision((x) => x + 1);
+  }
+
   const tutupAman = () => {
-    if (drafKotor.current.size > 0 && !window.confirm("Ada teks yang belum tersimpan. Tutup panel dan buang draf tersebut?")) return;
+    if (adaDrafKotor && !window.confirm("Ada perubahan yang belum disimpan. Tutup panel dan buang semua draf?")) return;
     onTutup();
   };
 
@@ -127,8 +208,9 @@ export function PanelSkenario({
                 {skenario.kode} · Tahap {skenario.fase}
               </p>
               <h2 className="mt-0.5 text-[18px] font-bold leading-snug tracking-tight text-tinta">
-                {skenario.judul}
+                {draf.judul}
               </h2>
+              <p className="mt-1 text-[12px] text-tinta-3">Ubah beberapa bagian, lalu simpan sekaligus.</p>
               {adaDrafKotor && <p role="status" className="mt-1 text-[12px] font-medium text-tertunda">Ada teks yang belum tersimpan</p>}
             </div>
             <button type="button" onClick={tutupAman} aria-label="Tutup"
@@ -140,9 +222,9 @@ export function PanelSkenario({
 
         <div className="space-y-5 px-6 py-5">
           <Bagian judul="Judul skenario">
-            <Teks nilai={skenario.judul} kosong="Judul belum diisi"
-              bolehUbah={bolehKelolaSkenario} onSimpan={(v) => onUbah({ judul: v })} maksimal={200}
-              onDrafKotor={(kotor) => tandaiDraf("judul", kotor)} />
+            <Teks nilai={skenario.judul} draf={draf.judul} kosong="Judul belum diisi"
+              bolehUbah={bolehKelolaSkenario} onChange={(v) => ubahDraf("judul", v)} maksimal={200}
+              revision={editorRevision} disabled={simpanSibuk} onSimpanSemua={() => void simpanSemua()} />
           </Bagian>
 
           {/* Sifat: label kiri kecil dan redup, nilai kanan lebih terang.
@@ -151,8 +233,8 @@ export function PanelSkenario({
           <dl className="space-y-2.5">
             <Sifat label="Status">
               {bolehUbah ? (
-                <select value={skenario.status}
-                  onChange={(e) => onUbah({ status: e.target.value })}
+                <select value={draf.status} disabled={simpanSibuk}
+                  onChange={(e) => ubahDraf("status", e.target.value)}
                   className={cn("rounded px-2 py-1 text-[13.5px] font-medium", st.kelas)}>
                   {["PENDING","PASS","FAIL","BLOCKED"].map((x) => (
                     <option key={x} value={x}>{labelStatus(x)}</option>
@@ -160,7 +242,7 @@ export function PanelSkenario({
                 </select>
               ) : (
                 <span className={cn("rounded px-2 py-1 text-[13.5px] font-medium", st.kelas)}>
-                  {labelStatus(skenario.status)}
+                  {labelStatus(draf.status)}
                 </span>
               )}
             </Sifat>
@@ -173,30 +255,30 @@ export function PanelSkenario({
           </dl>
 
           <Bagian judul="Langkah pengujian">
-            <Teks nilai={skenario.langkah_pengujian} kosong="Belum diisi"
-              bolehUbah={bolehKelolaSkenario} onSimpan={(v) => onUbah({ langkah_pengujian: v })}
-              onDrafKotor={(kotor) => tandaiDraf("langkah", kotor)} />
+            <Teks nilai={skenario.langkah_pengujian} draf={draf.langkah_pengujian} kosong="Belum diisi"
+              bolehUbah={bolehKelolaSkenario} onChange={(v) => ubahDraf("langkah_pengujian", v)}
+              revision={editorRevision} disabled={simpanSibuk} onSimpanSemua={() => void simpanSemua()} />
           </Bagian>
 
           <Bagian judul="Hasil yang diharapkan">
-            <Teks nilai={skenario.hasil_diharapkan} kosong="Belum diisi"
-              bolehUbah={bolehKelolaSkenario} onSimpan={(v) => onUbah({ hasil_diharapkan: v })}
-              onDrafKotor={(kotor) => tandaiDraf("hasil-diharapkan", kotor)} />
+            <Teks nilai={skenario.hasil_diharapkan} draf={draf.hasil_diharapkan} kosong="Belum diisi"
+              bolehUbah={bolehKelolaSkenario} onChange={(v) => ubahDraf("hasil_diharapkan", v)}
+              revision={editorRevision} disabled={simpanSibuk} onSimpanSemua={() => void simpanSemua()} />
           </Bagian>
 
           <Bagian judul="Hasil aktual / temuan">
-            <Teks nilai={skenario.hasil_aktual} kosong="Catat apa yang benar-benar terjadi saat pengujian"
-              bolehUbah={bolehUbah} onSimpan={(v) => onUbah({ hasil_aktual: v })}
-              onDrafKotor={(kotor) => tandaiDraf("hasil-aktual", kotor)} />
+            <Teks nilai={skenario.hasil_aktual} draf={draf.hasil_aktual} kosong="Catat apa yang benar-benar terjadi saat pengujian"
+              bolehUbah={bolehUbah} onChange={(v) => ubahDraf("hasil_aktual", v)}
+              revision={editorRevision} disabled={simpanSibuk} onSimpanSemua={() => void simpanSemua()} />
           </Bagian>
 
           <Bagian judul="Catatan tindak lanjut">
-            <Teks nilai={skenario.catatan_tindak_lanjut}
-              kosong={skenario.status === "FAIL" || skenario.status === "BLOCKED"
+            <Teks nilai={skenario.catatan_tindak_lanjut} draf={draf.catatan_tindak_lanjut}
+              kosong={draf.status === "FAIL" || draf.status === "BLOCKED"
                 ? "WAJIB diisi untuk status Gagal atau Tertunda" : "Belum ada catatan"}
-              bolehUbah={bolehUbah} onSimpan={(v) => onUbah({ catatan_tindak_lanjut: v })}
-              sorot={skenario.status === "FAIL" || skenario.status === "BLOCKED"}
-              onDrafKotor={(kotor) => tandaiDraf("tindak-lanjut", kotor)} />
+              bolehUbah={bolehUbah} onChange={(v) => ubahDraf("catatan_tindak_lanjut", v)}
+              sorot={draf.status === "FAIL" || draf.status === "BLOCKED"}
+              revision={editorRevision} disabled={simpanSibuk} onSimpanSemua={() => void simpanSemua()} />
           </Bagian>
 
           <div className="border-t border-garis pt-4">
@@ -242,6 +324,25 @@ export function PanelSkenario({
               </ul>
             )}
           </div>
+          {(bolehUbah || bolehKelolaSkenario) && (
+            <div className="sticky bottom-0 -mx-6 border-t border-garis bg-kartu/95 px-6 py-3 backdrop-blur">
+              {simpanInfo && (
+                <p role="status" className={cn("mb-2 text-[12.5px]", simpanInfo.jenis === "galat" ? "text-gagal" : "text-lulus")}>
+                  {simpanInfo.teks}
+                </p>
+              )}
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={batalkanSemua} disabled={!adaDrafKotor || simpanSibuk}
+                  className="rounded-md border border-garis px-3 py-2 text-[13px] text-tinta-2 disabled:opacity-50">
+                  Batalkan
+                </button>
+                <button type="button" onClick={() => void simpanSemua()} disabled={!adaDrafKotor || simpanSibuk}
+                  className="rounded-md bg-aksi px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-50">
+                  {simpanSibuk ? "Menyimpan semua…" : "Simpan semua perubahan"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </aside>
     </>
@@ -267,47 +368,35 @@ function Bagian({ judul, children }: { judul: string; children: React.ReactNode 
 }
 
 function Teks({
-  nilai, kosong, bolehUbah, onSimpan, sorot, maksimal = 20000, onDrafKotor,
+  nilai, draf, kosong, bolehUbah, onChange, sorot, maksimal = 20000,
+  revision, disabled, onSimpanSemua,
 }: {
-  nilai: string | null; kosong: string; bolehUbah: boolean;
-  onSimpan: (v: string) => Promise<boolean>; sorot?: boolean; maksimal?: number;
-  onDrafKotor: (kotor: boolean) => void;
+  nilai: string | null; draf: string; kosong: string; bolehUbah: boolean;
+  onChange: (v: string) => void; sorot?: boolean; maksimal?: number;
+  revision: number; disabled: boolean; onSimpanSemua: () => void;
 }) {
   const [buka, setBuka] = useState(false);
-  const [draf, setDraf] = useState(nilai ?? "");
-  const [sibuk, setSibuk] = useState(false);
-  const kunciSimpan = useRef(false);
-  const batalRef = useRef(false);
-
-  async function simpanDraf() {
-    if (kunciSimpan.current) return;
-    if (draf === (nilai ?? "")) { onDrafKotor(false); setBuka(false); return; }
-    kunciSimpan.current = true;
-    setSibuk(true);
-    try {
-      if (await onSimpan(draf)) { onDrafKotor(false); setBuka(false); }
-    } finally {
-      kunciSimpan.current = false;
-      setSibuk(false);
-    }
-  }
+  const berubah = draf !== (nilai ?? "");
+  useEffect(() => { setBuka(false); }, [revision]);
 
   if (!bolehUbah) {
     return (
       <p className={cn("whitespace-pre-wrap text-[13.5px] leading-relaxed",
-        nilai ? "text-tinta-2" : "text-tinta-3")}>
-        {nilai || kosong}
+        draf ? "text-tinta-2" : "text-tinta-3") }>
+        {draf || kosong}
       </p>
     );
   }
 
   if (!buka) {
     return (
-      <button type="button" onClick={() => { batalRef.current = false; onDrafKotor(false); setDraf(nilai ?? ""); setBuka(true); }}
+      <button type="button" onClick={() => setBuka(true)}
         className={cn("block w-full whitespace-pre-wrap rounded px-2 py-1.5 text-left text-[13.5px] leading-relaxed hover:bg-kanvas",
-          nilai ? "text-tinta-2" : "text-tinta-3",
-          sorot && !nilai && "ring-1 ring-gagal/40")}>
-        {nilai || kosong}
+          draf ? "text-tinta-2" : "text-tinta-3",
+          berubah && "text-aksi",
+          sorot && !draf && "ring-1 ring-gagal/40")}>
+        {draf || kosong}
+        {berubah && <span className="ml-1 text-[11px] font-medium text-tertunda">(belum disimpan)</span>}
       </button>
     );
   }
@@ -316,26 +405,16 @@ function Teks({
     <div onBlur={(e) => {
       const tujuan = e.relatedTarget;
       if (tujuan instanceof Node && e.currentTarget.contains(tujuan)) return;
-      if (!batalRef.current && draf !== (nilai ?? "")) void simpanDraf();
+      setBuka(false);
     }}>
-      <textarea autoFocus rows={4} value={draf} maxLength={maksimal} disabled={sibuk}
-        onChange={(e) => { setDraf(e.target.value); onDrafKotor(e.target.value !== (nilai ?? "")); }}
+      <textarea autoFocus rows={4} value={draf} maxLength={maksimal} disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); batalRef.current = true; onDrafKotor(false); setDraf(nilai ?? ""); setBuka(false); }
-          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void simpanDraf(); }
+          if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onChange(nilai ?? ""); setBuka(false); }
+          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onSimpanSemua(); }
         }}
         className="w-full rounded border border-aksi bg-kartu px-2 py-1.5 text-[13.5px] leading-relaxed text-tinta-2 outline-none" />
-      <div className="mt-1.5 flex items-center gap-2">
-        <button type="button" onClick={() => void simpanDraf()} disabled={sibuk || draf === (nilai ?? "")}
-          className="rounded bg-aksi px-2.5 py-1 text-[12px] font-semibold text-white disabled:opacity-50">
-          {sibuk ? "Menyimpan…" : "Simpan"}
-        </button>
-        <button type="button" onClick={() => { batalRef.current = true; onDrafKotor(false); setDraf(nilai ?? ""); setBuka(false); }} disabled={sibuk}
-          className="rounded border border-garis px-2.5 py-1 text-[12px] text-tinta-2 disabled:opacity-50">
-          Batal
-        </button>
-        <span className="text-[11px] text-tinta-3">Ctrl+Enter untuk menyimpan</span>
-      </div>
+      <p className="mt-1 text-[11px] text-tinta-3">Perubahan masuk ke tombol Simpan semua · Ctrl+Enter untuk menyimpan semua</p>
     </div>
   );
 }

@@ -413,6 +413,7 @@ export function TabelSkenario({
              */
             const kunci = Object.keys(tambalan)[0];
             const kirim: Record<string, unknown> = {};
+            if ("judul" in tambalan) kirim.judul = tambalan.judul;
             if ("status" in tambalan) kirim.status = tambalan.status;
             if ("catatan_tindak_lanjut" in tambalan) kirim.catatanTindakLanjut = tambalan.catatan_tindak_lanjut;
             if ("langkah_pengujian" in tambalan) kirim.langkahPengujian = tambalan.langkah_pengujian;

@@ -8,6 +8,7 @@ import { hapusObjek } from "@/lib/simpanan";
 export const dynamic = "force-dynamic";
 const LINGKUNGAN_SAH = ["DEV", "SIT", "UAT", "PROD"];
 const TAHAP_SAH = ["PERSIAPAN", "SIT", "UAT", "WAITING_SIGNOFF", "SELESAI"];
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function tanggalInput(nilai: unknown, label: string): { nilai: string | null; pesan?: string } {
   if (nilai === undefined || nilai === null || nilai === "") return { nilai: null };
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
       modulAplikasi?: string; unitBisnis?: string;
       ruangLingkup?: string; sumberAcuan?: string; dasarRegulasi?: string;
       lingkungan?: string; alamatServer?: string; alamatPengujian?: string; tahunAnggaran?: number;
-      tanggalMulai?: string | null; targetSelesai?: string | null; projectId?: string; tahap?: string;
+      tanggalMulai?: string | null; targetSelesai?: string | null; pmId?: string | null; projectId?: string; tahap?: string;
       versiDokumen?: string; disusunOleh?: string; statusDokumen?: string } | null;
   if (!isi?.aksi) return NextResponse.json({ pesan: "Aksi wajib diisi." }, { status: 400 });
   if (isi.aksi === "hapus" && saya.peran !== "ADMIN") {
@@ -113,6 +114,17 @@ export async function POST(req: Request) {
       if (jenisPengujian !== "SIT" && jenisPengujian !== "UAT") {
         return NextResponse.json({ pesan: "Pilih satu jenis pengujian: SIT atau UAT." }, { status: 400 });
       }
+      let pmId: string | null = null;
+      if (isi.pmId !== undefined && isi.pmId !== null && isi.pmId !== "") {
+        if (typeof isi.pmId !== "string" || !UUID.test(isi.pmId)) {
+          return NextResponse.json({ pesan: "PIC tidak sah." }, { status: 400 });
+        }
+        const [pic] = (await klienMentah.unsafe(
+          `SELECT id FROM th_users WHERE id = $1::uuid AND aktif = true`, [isi.pmId],
+        )) as unknown as { id: string }[];
+        if (!pic) return NextResponse.json({ pesan: "PIC harus merupakan akun aktif." }, { status: 400 });
+        pmId = pic.id;
+      }
       const tahunAnggaran = isi.tahunAnggaran ?? null;
       if (tahunAnggaran !== null && (!Number.isInteger(tahunAnggaran) || tahunAnggaran < 1900 || tahunAnggaran > 2200)) {
         return NextResponse.json({ pesan: "Tahun anggaran harus berupa tahun yang sah (1900–2200)." }, { status: 400 });
@@ -141,7 +153,7 @@ export async function POST(req: Request) {
             (isi.aplikasi ?? "").trim().slice(0, 160) || null,
             (isi.modul ?? "").trim().slice(0, 160) || null,
             jenisPengujian,
-            saya.id,
+            pmId,
             (isi.ruangLingkup ?? "").trim().slice(0, 10000) || null,
             (isi.dasarRegulasi ?? "").trim().slice(0, 200) || null,
             (isi.alamatPengujian ?? "").trim().slice(0, 300) || null,

@@ -4,14 +4,14 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 /** Form proyek baru: hanya metadata yang dibutuhkan untuk memulai pengujian. */
-export function TombolProyekBaru() {
+export function TombolProyekBaru({ pic }: { pic: { id: string; nama: string }[] }) {
   const [buka, setBuka] = useState(false);
   const [sibuk, setSibuk] = useState(false);
   const [galat, setGalat] = useState<string | null>(null);
   const router = useRouter();
 
   const [f, setF] = useState({
-    nama: "", aplikasi: "", modul: "", ruangLingkup: "", jenisPengujian: "",
+    nama: "", pmId: "", aplikasi: "", modul: "", ruangLingkup: "", jenisPengujian: "",
     dasarRegulasi: "", alamatPengujian: "", tahunAnggaran: String(new Date().getFullYear()),
     tanggalMulai: "", targetSelesai: "",
   });
@@ -42,6 +42,7 @@ export function TombolProyekBaru() {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   aksi: "tambah", ...f,
+                  pmId: f.pmId || null,
                   tahunAnggaran: f.tahunAnggaran.trim() ? Number(f.tahunAnggaran) : null,
                   tanggalMulai: f.tanggalMulai || null,
                   targetSelesai: f.targetSelesai || null,
@@ -62,6 +63,16 @@ export function TombolProyekBaru() {
           <div className="space-y-4">
             <Isian label="Nama proyek" wajib nilai={f.nama} ubah={(v) => set("nama", v)}
               contoh="Penyesuaian OM-SPAN TKD sesuai PER-4/PB/2026" maksimal={200} />
+            <div>
+              <label htmlFor="p-pm-id" className="mb-1 block text-[13.5px] font-medium text-tinta-2">
+                PIC <span className="font-normal text-tinta-3">(opsional)</span>
+              </label>
+              <select id="p-pm-id" value={f.pmId} onChange={(e) => set("pmId", e.target.value)}
+                className="w-full rounded-md border border-garis-kuat bg-white px-3 py-2 text-[16px] outline-none focus:border-aksi">
+                <option value="">— Belum ditentukan —</option>
+                {pic.map((orang) => <option key={orang.id} value={orang.id}>{orang.nama}</option>)}
+              </select>
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <Isian label="Aplikasi" nilai={f.aplikasi} ubah={(v) => set("aplikasi", v)}
                 contoh="OM-SPAN TKD" maksimal={160} />
