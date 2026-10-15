@@ -4,6 +4,7 @@ import { klienMentah } from "@/db";
 import {
   wajibMasukApi, bolehAksesProyek, bolehKelolaSkenario, bolehUbahEksekusi,
 } from "@/lib/gerbang";
+import { faseUntukProyek, type FasePengujian } from "@/lib/fase-proyek";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,13 @@ export async function POST(req: Request) {
       if (!projectId) return NextResponse.json({ pesan: "projectId wajib" }, { status: 400 });
       if (!["SIT","UAT"].includes(fase)) {
         return NextResponse.json({ pesan: `Fase tidak sah: ${fase}` }, { status: 400 });
+      }
+      const [proyek] = (await klienMentah.unsafe(
+        `SELECT jenis_pengujian FROM th_projects WHERE id = $1`, [projectId],
+      )) as unknown as { jenis_pengujian: string }[];
+      if (!proyek) return NextResponse.json({ pesan: "Proyek tidak ditemukan." }, { status: 404 });
+      if (!faseUntukProyek(proyek.jenis_pengujian).includes(fase as FasePengujian)) {
+        return NextResponse.json({ pesan: `Proyek ini hanya memiliki fase ${faseUntukProyek(proyek.jenis_pengujian).join(" dan ")}.` }, { status: 400 });
       }
       const judul = (isi.judul ?? "").trim().slice(0, 200);
       if (!judul) return NextResponse.json({ pesan: "Judul skenario wajib diisi" }, { status: 400 });

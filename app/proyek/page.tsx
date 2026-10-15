@@ -4,11 +4,13 @@ import { Nav } from "@/components/nav";
 import { wajibMasuk, internal, bolehKelolaProyek } from "@/lib/gerbang";
 import { tanggalID } from "@/lib/waktu";
 import { TombolProyekBaru } from "@/components/tombol-proyek-baru";
+import { labelJenisPengujian } from "@/lib/fase-proyek";
 
 export const dynamic = "force-dynamic";
 
 type Baris = {
-  id: string; nama: string; modul_aplikasi: string | null; unit_bisnis: string | null;
+  id: string; nama: string; aplikasi: string | null; modul: string | null;
+  modul_aplikasi: string | null; jenis_pengujian: string;
   tahap: string; lingkungan: string; tanggal_mulai: string | Date | null;
   target_selesai: string | Date | null; pm_nama: string | null;
   total: number; lulus: number; gagal: number; tertunda: number; belum: number;
@@ -34,7 +36,8 @@ export default async function HalamanProyek() {
   const dapatMengelola = bolehKelolaProyek(saya.peran);
 
   const daftar = (await klienMentah.unsafe(`
-    SELECT p.id, p.nama, p.modul_aplikasi, p.unit_bisnis, p.tahap, p.lingkungan,
+    SELECT p.id, p.nama, p.aplikasi, p.modul, p.modul_aplikasi, p.jenis_pengujian,
+           p.tahap, p.lingkungan,
            p.tanggal_mulai, p.target_selesai,
            u.nama AS pm_nama,
            (SELECT count(*) FROM th_scenarios s WHERE s.project_id = p.id)::int AS total,
@@ -80,7 +83,7 @@ export default async function HalamanProyek() {
             <table className="w-full border-collapse text-[14px]">
               <thead>
                 <tr className="border-b border-garis bg-kanvas text-left">
-                  {["Proyek","Unit","Tahap","Periode","Kelulusan","Kendala",""].map((h, i) => (
+                  {["Proyek","Aplikasi / modul","Jenis pengujian","Tahap","Periode","Kelulusan","Kendala",""].map((h, i) => (
                     <th key={i} className="whitespace-nowrap px-3 py-2.5 text-[12.5px] font-semibold uppercase tracking-wide text-tinta-3">
                       {h}
                     </th>
@@ -101,11 +104,12 @@ export default async function HalamanProyek() {
                         </Link>
                         <span className="mt-0.5 block text-[12.5px] text-tinta-3">
                           {p.id}
-                          {p.modul_aplikasi ? ` · ${p.modul_aplikasi}` : ""}
-                          {p.lingkungan !== "DEV" ? ` · ${p.lingkungan}` : ""}
                         </span>
                       </td>
-                      <td className="px-3 py-2.5 text-tinta-2">{p.unit_bisnis ?? "—"}</td>
+                      <td className="px-3 py-2.5 text-tinta-2">
+                        {[p.aplikasi ?? p.modul_aplikasi, p.modul].filter(Boolean).join(" · ") || "—"}
+                      </td>
+                      <td className="px-3 py-2.5 text-tinta-2">{labelJenisPengujian(p.jenis_pengujian)}</td>
                       <td className="px-3 py-2.5">
                         <span className="rounded bg-kanvas px-2 py-0.5 text-[12.5px] font-medium text-tinta-2">
                           {LABEL_TAHAP[p.tahap] ?? p.tahap}

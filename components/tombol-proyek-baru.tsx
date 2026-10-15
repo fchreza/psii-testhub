@@ -3,17 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-/**
- * Formulir proyek baru.
- *
- * KENAPA MEMUAT METADATA COVER, bukan hanya nama:
- * Berkas contoh di kantor memuat Dasar Regulasi dan Lingkungan Uji di halaman
- * cover-nya, dan keduanya benar-benar menentukan:
- *   - Dasar Regulasi menentukan VERSI ATURAN yang diuji (PER-4/PB/2026 berbeda
- *     dari PER-3/PB/2025)
- *   - Lingkungan menentukan hasilnya boleh dipakai mengesahkan produksi atau tidak
- * Kalau tidak dikumpulkan sekarang, informasi itu hilang begitu proyek dibuat.
- */
+/** Form proyek baru: hanya metadata yang dibutuhkan untuk memulai pengujian. */
 export function TombolProyekBaru() {
   const [buka, setBuka] = useState(false);
   const [sibuk, setSibuk] = useState(false);
@@ -21,9 +11,9 @@ export function TombolProyekBaru() {
   const router = useRouter();
 
   const [f, setF] = useState({
-    nama: "", modulAplikasi: "", unitBisnis: "", ruangLingkup: "",
-    sumberAcuan: "", dasarRegulasi: "", lingkungan: "DEV", alamatServer: "",
-    tahunAnggaran: String(new Date().getFullYear()), tanggalMulai: "", targetSelesai: "",
+    nama: "", aplikasi: "", modul: "", ruangLingkup: "", jenisPengujian: "",
+    dasarRegulasi: "", alamatPengujian: "", tahunAnggaran: String(new Date().getFullYear()),
+    tanggalMulai: "", targetSelesai: "",
   });
   const set = (k: string, v: string) => setF((x) => ({ ...x, [k]: v }));
 
@@ -66,40 +56,39 @@ export function TombolProyekBaru() {
           }}>
           <h2 className="mb-1 text-[20px] font-bold tracking-tight text-tinta">Proyek baru</h2>
           <p className="mb-5 text-[13.5px] leading-relaxed text-tinta-2">
-            Hanya nama yang wajib. Sisanya bisa dilengkapi nanti — tetapi Dasar Regulasi
-            dan Lingkungan sebaiknya diisi sekarang, karena keduanya menentukan arti hasil ujinya.
+            Pilih satu jenis pengujian. Proyek SIT hanya menampilkan SIT; proyek UAT hanya menampilkan UAT.
           </p>
 
           <div className="space-y-4">
             <Isian label="Nama proyek" wajib nilai={f.nama} ubah={(v) => set("nama", v)}
-              contoh="Penyesuaian OM-SPAN TKD sesuai PER-4/PB/2026" />
+              contoh="Penyesuaian OM-SPAN TKD sesuai PER-4/PB/2026" maksimal={200} />
             <div className="grid gap-4 sm:grid-cols-2">
-              <Isian label="Modul / Aplikasi" nilai={f.modulAplikasi} ubah={(v) => set("modulAplikasi", v)} contoh="OM-SPAN TKD" />
-              <Isian label="Unit bisnis / divisi" nilai={f.unitBisnis} ubah={(v) => set("unitBisnis", v)} contoh="Dit. PA" />
+              <Isian label="Aplikasi" nilai={f.aplikasi} ubah={(v) => set("aplikasi", v)}
+                contoh="OM-SPAN TKD" maksimal={160} />
+              <Isian label="Modul" nilai={f.modul} ubah={(v) => set("modul", v)}
+                contoh="Penyaluran TKD" maksimal={160} />
             </div>
             <Isian label="Ruang lingkup" nilai={f.ruangLingkup} ubah={(v) => set("ruangLingkup", v)}
-              contoh="Poin A s.d. F" />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Isian label="Sumber acuan" nilai={f.sumberAcuan} ubah={(v) => set("sumberAcuan", v)} contoh="UR-OMSPAN-TKD Juni 2026" />
-              <Isian label="Dasar regulasi" nilai={f.dasarRegulasi} ubah={(v) => set("dasarRegulasi", v)} contoh="PER-4/PB/2026" />
+              contoh="Poin A s.d. F" maksimal={10000} />
+            <div>
+              <label htmlFor="p-jenis-pengujian" className="mb-1 block text-[13.5px] font-medium text-tinta-2">
+                Jenis pengujian <span className="text-gagal">*</span>
+              </label>
+              <select id="p-jenis-pengujian" required value={f.jenisPengujian}
+                onChange={(e) => set("jenisPengujian", e.target.value)}
+                className="w-full rounded-md border border-garis-kuat bg-white px-3 py-2 text-[16px] outline-none focus:border-aksi">
+                <option value="" disabled>Pilih SIT atau UAT</option>
+                <option value="SIT">SIT</option>
+                <option value="UAT">UAT</option>
+              </select>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="p-lingkungan" className="mb-1 block text-[13.5px] font-medium text-tinta-2">
-                  Lingkungan uji
-                </label>
-                <select id="p-lingkungan" value={f.lingkungan} onChange={(e) => set("lingkungan", e.target.value)}
-                  className="w-full rounded-md border border-garis-kuat px-3 py-2 text-[16px] outline-none focus:border-aksi">
-                  {["DEV","SIT","UAT","PROD"].map((x) => <option key={x} value={x}>{x}</option>)}
-                </select>
-                <p className="mt-1 text-[12.5px] leading-relaxed text-tinta-3">
-                  Hasil di DEV tidak boleh dipakai untuk mengesahkan produksi.
-                </p>
-              </div>
-              <Isian label="Alamat server" nilai={f.alamatServer} ubah={(v) => set("alamatServer", v)} contoh="http://tkd-dev..." />
-            </div>
+            <Isian label="Dasar regulasi" nilai={f.dasarRegulasi} ubah={(v) => set("dasarRegulasi", v)}
+              contoh="PER-4/PB/2026" maksimal={200} />
+            <Isian label="Alamat pengujian" nilai={f.alamatPengujian} ubah={(v) => set("alamatPengujian", v)}
+              contoh="https://tkd-dev.example.id" maksimal={300} />
             <div className="grid gap-4 sm:grid-cols-3">
-              <Isian label="Tahun anggaran" tipe="number" nilai={f.tahunAnggaran} ubah={(v) => set("tahunAnggaran", v)} />
+              <Isian label="Tahun anggaran" tipe="number" nilai={f.tahunAnggaran} ubah={(v) => set("tahunAnggaran", v)}
+                min={1900} max={2200} />
               <Isian label="Tanggal mulai" tipe="date" nilai={f.tanggalMulai} ubah={(v) => set("tanggalMulai", v)} />
               <Isian label="Target selesai" tipe="date" nilai={f.targetSelesai} ubah={(v) => set("targetSelesai", v)} />
             </div>
@@ -128,10 +117,10 @@ export function TombolProyekBaru() {
 }
 
 function Isian({
-  label, nilai, ubah, contoh, wajib, tipe = "text",
+  label, nilai, ubah, contoh, wajib, tipe = "text", maksimal, min, max,
 }: {
   label: string; nilai: string; ubah: (v: string) => void;
-  contoh?: string; wajib?: boolean; tipe?: string;
+  contoh?: string; wajib?: boolean; tipe?: string; maksimal?: number; min?: number; max?: number;
 }) {
   const id = `p-${label.toLowerCase().replace(/[^a-z]+/g, "-")}`;
   return (
@@ -140,6 +129,7 @@ function Isian({
         {label}{wajib && <span className="text-gagal"> *</span>}
       </label>
       <input id={id} type={tipe} required={wajib} value={nilai} placeholder={contoh}
+        maxLength={maksimal} min={min} max={max} step={tipe === "number" ? 1 : undefined}
         onChange={(e) => ubah(e.target.value)}
         className="w-full rounded-md border border-garis-kuat px-3 py-2 text-[16px] outline-none focus:border-aksi" />
     </div>

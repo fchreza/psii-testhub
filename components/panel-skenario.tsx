@@ -12,6 +12,18 @@ type Riwayat = {
   pada: string; oleh: string | null;
 };
 
+const CACHE_RIWAYAT = new Map<string, { versi: string; riwayat: Riwayat[] }>();
+const MAKS_CACHE_RIWAYAT = 100;
+
+function simpanCacheRiwayat(id: string, versi: string, riwayat: Riwayat[]) {
+  if (!CACHE_RIWAYAT.has(id) && CACHE_RIWAYAT.size >= MAKS_CACHE_RIWAYAT) {
+    const pertama = CACHE_RIWAYAT.keys().next().value;
+    if (pertama) CACHE_RIWAYAT.delete(pertama);
+  }
+  CACHE_RIWAYAT.delete(id);
+  CACHE_RIWAYAT.set(id, { versi, riwayat });
+}
+
 /**
  * Panel detail skenario.
  *
@@ -31,8 +43,8 @@ export function PanelSkenario({
   skenario: Skenario; projectId: string; bolehUbah: boolean; bolehKelolaSkenario: boolean;
   onTutup: () => void; onUbah: (tambalan: Partial<Skenario>) => Promise<boolean>;
 }) {
-  const [riwayat, setRiwayat] = useState<Riwayat[]>([]);
-  const [riwayatMuat, setRiwayatMuat] = useState(true);
+  const [riwayat, setRiwayat] = useState<Riwayat[]>(() => CACHE_RIWAYAT.get(skenario.id)?.riwayat ?? []);
+  const [riwayatMuat, setRiwayatMuat] = useState(() => !CACHE_RIWAYAT.has(skenario.id));
   const [riwayatGalat, setRiwayatGalat] = useState<string | null>(null);
   const drafKotor = useRef(new Set<string>());
   const [adaDrafKotor, setAdaDrafKotor] = useState(false);
@@ -75,15 +87,20 @@ export function PanelSkenario({
 
   useEffect(() => {
     let batal = false;
-    setRiwayatMuat(true);
+    const cache = CACHE_RIWAYAT.get(skenario.id);
+    if (cache) setRiwayat(cache.riwayat);
+    setRiwayatMuat(!cache);
     setRiwayatGalat(null);
+    if (cache?.versi === skenario.versi) return () => { batal = true; };
     void (async () => {
       try {
         const r = await fetch(`/api/v1/riwayat?scenarioId=${skenario.id}`);
         const j = await r.json().catch(() => ({}));
         if (batal) return;
         if (!r.ok) { setRiwayatGalat(j.pesan ?? "Riwayat tidak dapat dimuat."); return; }
-        setRiwayat(j.riwayat ?? []);
+        const terbaru = j.riwayat ?? [];
+        simpanCacheRiwayat(skenario.id, skenario.versi, terbaru);
+        setRiwayat(terbaru);
       } catch {
         if (!batal) setRiwayatGalat("Tidak dapat memuat riwayat. Periksa koneksi lalu coba lagi.");
       } finally {
@@ -91,7 +108,7 @@ export function PanelSkenario({
       }
     })();
     return () => { batal = true; };
-  }, [skenario.id, skenario.diubah_pada]);
+  }, [skenario.id, skenario.versi]);
 
   return (
     <>

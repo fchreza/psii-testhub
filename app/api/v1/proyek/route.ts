@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { klienMentah } from "@/db";
 import { bolehKelolaProyek, wajibMasukApi } from "@/lib/gerbang";
+import { faseUntukProyek } from "@/lib/fase-proyek";
 
 export const dynamic = "force-dynamic";
 const LINGKUNGAN_SAH = ["DEV", "SIT", "UAT", "PROD"];
@@ -28,9 +29,10 @@ export async function POST(req: Request) {
   }
 
   const isi = await req.json().catch(() => null) as
-    { aksi?: string; nama?: string; modulAplikasi?: string; unitBisnis?: string;
+    { aksi?: string; nama?: string; aplikasi?: string; modul?: string; jenisPengujian?: string;
+      modulAplikasi?: string; unitBisnis?: string;
       ruangLingkup?: string; sumberAcuan?: string; dasarRegulasi?: string;
-      lingkungan?: string; alamatServer?: string; tahunAnggaran?: number;
+      lingkungan?: string; alamatServer?: string; alamatPengujian?: string; tahunAnggaran?: number;
       tanggalMulai?: string | null; targetSelesai?: string | null; projectId?: string; tahap?: string;
       versiDokumen?: string; disusunOleh?: string; statusDokumen?: string } | null;
   if (!isi?.aksi) return NextResponse.json({ pesan: "Aksi wajib diisi." }, { status: 400 });
@@ -40,7 +42,7 @@ export async function POST(req: Request) {
       if (isi.nama !== undefined && typeof isi.nama !== "string") {
         return NextResponse.json({ pesan: "Nama proyek harus berupa teks." }, { status: 400 });
       }
-      for (const [kunci, label] of [["modulAplikasi", "Modul/aplikasi"], ["unitBisnis", "Unit bisnis"], ["ruangLingkup", "Ruang lingkup"], ["sumberAcuan", "Sumber acuan"], ["dasarRegulasi", "Dasar regulasi"], ["alamatServer", "Alamat server"]] as const) {
+      for (const [kunci, label] of [["aplikasi", "Aplikasi"], ["modul", "Modul"], ["ruangLingkup", "Ruang lingkup"], ["dasarRegulasi", "Dasar regulasi"], ["alamatPengujian", "Alamat pengujian"]] as const) {
         const nilai = isi[kunci];
         if (nilai !== undefined && nilai !== null && typeof nilai !== "string") {
           return NextResponse.json({ pesan: `${label} harus berupa teks.` }, { status: 400 });
@@ -48,8 +50,10 @@ export async function POST(req: Request) {
       }
       const nama = (isi.nama ?? "").trim().slice(0, 200);
       if (!nama) return NextResponse.json({ pesan: "Nama proyek wajib diisi." }, { status: 400 });
-      const lingkungan = isi.lingkungan ?? "DEV";
-      if (!LINGKUNGAN_SAH.includes(lingkungan)) return NextResponse.json({ pesan: "Lingkungan uji tidak sah." }, { status: 400 });
+      const jenisPengujian = isi.jenisPengujian;
+      if (jenisPengujian !== "SIT" && jenisPengujian !== "UAT") {
+        return NextResponse.json({ pesan: "Pilih satu jenis pengujian: SIT atau UAT." }, { status: 400 });
+      }
       const tahunAnggaran = isi.tahunAnggaran ?? null;
       if (tahunAnggaran !== null && (!Number.isInteger(tahunAnggaran) || tahunAnggaran < 1900 || tahunAnggaran > 2200)) {
         return NextResponse.json({ pesan: "Tahun anggaran harus berupa tahun yang sah (1900–2200)." }, { status: 400 });
@@ -70,19 +74,18 @@ export async function POST(req: Request) {
         const projectId = `PRJ-${String(nomor.n + 1).padStart(3, "0")}`;
         await tx.unsafe(
           `INSERT INTO th_projects
-             (id, nama, modul_aplikasi, unit_bisnis, pm_id, ruang_lingkup, sumber_acuan,
-              dasar_regulasi, lingkungan, alamat_server, tahun_anggaran,
+             (id, nama, aplikasi, modul, jenis_pengujian, modul_aplikasi, pm_id,
+              ruang_lingkup, dasar_regulasi, alamat_server, tahun_anggaran,
               tanggal_mulai, target_selesai, versi_dokumen, disusun_oleh, status_dokumen)
-           VALUES ($1,$2,$3,$4,$5::uuid,$6,$7,$8,$9,$10,$11,$12::date,$13::date,'1.0','Draft','Draft')`,
+           VALUES ($1,$2,$3,$4,$5,$3,$6::uuid,$7,$8,$9,$10,$11::date,$12::date,'1.0','Draft','Draft')`,
           [projectId, nama,
-            (isi.modulAplikasi ?? "").trim().slice(0, 160) || null,
-            (isi.unitBisnis ?? "").trim().slice(0, 160) || null,
+            (isi.aplikasi ?? "").trim().slice(0, 160) || null,
+            (isi.modul ?? "").trim().slice(0, 160) || null,
+            jenisPengujian,
             saya.id,
-            (isi.ruangLingkup ?? "").trim() || null,
-            (isi.sumberAcuan ?? "").trim().slice(0, 200) || null,
+            (isi.ruangLingkup ?? "").trim().slice(0, 10000) || null,
             (isi.dasarRegulasi ?? "").trim().slice(0, 200) || null,
-            lingkungan,
-            (isi.alamatServer ?? "").trim().slice(0, 300) || null,
+            (isi.alamatPengujian ?? "").trim().slice(0, 300) || null,
             tahunAnggaran,
             mulai.nilai,
             selesai.nilai],
@@ -99,8 +102,10 @@ export async function POST(req: Request) {
       if (!/^PRJ-\d{3,}$/.test(projectId)) return NextResponse.json({ pesan: "ID proyek tidak sah." }, { status: 400 });
 
       const perubahan: { kolom: string; nilai: string | number | null }[] = [];
-      const teks: { kunci: "nama" | "modulAplikasi" | "unitBisnis" | "ruangLingkup" | "sumberAcuan" | "dasarRegulasi" | "alamatServer" | "versiDokumen" | "disusunOleh" | "statusDokumen"; kolom: string; batas: number; wajib?: boolean }[] = [
+      const teks: { kunci: "nama" | "aplikasi" | "modul" | "modulAplikasi" | "unitBisnis" | "ruangLingkup" | "sumberAcuan" | "dasarRegulasi" | "alamatServer" | "versiDokumen" | "disusunOleh" | "statusDokumen"; kolom: string; batas: number; wajib?: boolean }[] = [
         { kunci: "nama", kolom: "nama", batas: 200, wajib: true },
+        { kunci: "aplikasi", kolom: "aplikasi", batas: 160 },
+        { kunci: "modul", kolom: "modul", batas: 160 },
         { kunci: "modulAplikasi", kolom: "modul_aplikasi", batas: 160 },
         { kunci: "unitBisnis", kolom: "unit_bisnis", batas: 160 },
         { kunci: "ruangLingkup", kolom: "ruang_lingkup", batas: 10000 },
@@ -145,7 +150,7 @@ export async function POST(req: Request) {
 
       const hasil = await klienMentah.begin(async (tx) => {
         const [lama] = (await tx.unsafe(
-          `SELECT nama, modul_aplikasi, unit_bisnis, ruang_lingkup, sumber_acuan, dasar_regulasi,
+          `SELECT nama, aplikasi, modul, modul_aplikasi, unit_bisnis, ruang_lingkup, sumber_acuan, dasar_regulasi,
                   lingkungan, alamat_server, tahun_anggaran, tanggal_mulai, target_selesai,
                   versi_dokumen, disusun_oleh, status_dokumen
            FROM th_projects WHERE id = $1 FOR UPDATE`, [projectId],
@@ -194,8 +199,11 @@ export async function POST(req: Request) {
       const projectId = isi.projectId ?? "";
       if (!/^PRJ-\d{3,}$/.test(projectId)) return NextResponse.json({ pesan: "ID proyek tidak sah." }, { status: 400 });
       if (!isi.tahap || !TAHAP_SAH.includes(isi.tahap)) return NextResponse.json({ pesan: "Tahap proyek tidak sah." }, { status: 400 });
-      const [lama] = (await klienMentah.unsafe(`SELECT tahap FROM th_projects WHERE id = $1`, [projectId])) as unknown as { tahap: string }[];
+      const [lama] = (await klienMentah.unsafe(`SELECT tahap, jenis_pengujian FROM th_projects WHERE id = $1`, [projectId])) as unknown as { tahap: string; jenis_pengujian: string }[];
       if (!lama) return NextResponse.json({ pesan: "Proyek tidak ditemukan." }, { status: 404 });
+      if ((isi.tahap === "SIT" || isi.tahap === "UAT") && !faseUntukProyek(lama.jenis_pengujian).includes(isi.tahap)) {
+        return NextResponse.json({ pesan: `Tahap ${isi.tahap} tidak tersedia untuk proyek ${lama.jenis_pengujian}.` }, { status: 400 });
+      }
       const [hasil] = (await klienMentah.unsafe(
         `UPDATE th_projects SET tahap = $1 WHERE id = $2 RETURNING id`, [isi.tahap, projectId],
       )) as unknown as { id: string }[];

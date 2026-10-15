@@ -16,14 +16,14 @@ const TABEL_DIHARAPKAN = [
 const INDEKS_DIHARAPKAN = [
   "th_users_email_unik", "th_scenarios_project_idx", "th_scenarios_penguji_idx",
   "th_scenarios_module_idx", "th_evidence_scenario_idx", "th_audit_project_idx",
-  "th_modules_project_idx", "th_members_user_idx", "th_password_resets_email_idx",
+  "th_audit_scenario_idx", "th_modules_project_idx", "th_members_user_idx", "th_password_resets_email_idx",
   "th_password_resets_ip_idx", "th_password_resets_user_idx",
 ];
 
 async function main() {
   const berkas = process.argv[2]
     ? [process.argv[2]]
-    : ["db/migrasi-001.sql", "db/migrasi-002-peran.sql", "db/migrasi-003-pemulihan-sandi.sql"];
+    : ["db/migrasi-001.sql", "db/migrasi-002-peran.sql", "db/migrasi-003-pemulihan-sandi.sql", "db/migrasi-004-jenis-pengujian.sql"];
   for (const nama of berkas) {
     console.log(`  menjalankan ${nama} ...`);
     await klienMentah.unsafe(readFileSync(nama, "utf8"));
@@ -79,6 +79,15 @@ async function main() {
   const resetWajib = ["user_id", "email_hash", "ip_hash", "token_hash", "dibuat_pada", "kedaluwarsa_pada", "digunakan_pada"];
   if (!adaKolom.includes("sesi_versi") || !resetWajib.every((k) => adaResetKolom.includes(k))) gagal++;
   console.log(`    pemulihan sandi: ${adaKolom.includes("sesi_versi") && resetWajib.every((k) => adaResetKolom.includes(k)) ? "LENGKAP" : "ADA YANG HILANG"}`);
+
+  const kolomProyek = (await klienMentah.unsafe(
+    `SELECT column_name FROM information_schema.columns WHERE table_name='th_projects'`,
+  )) as unknown as { column_name: string }[];
+  const adaKolomProyek = kolomProyek.map((k) => k.column_name);
+  const kolomBaru = ["aplikasi", "modul", "jenis_pengujian"];
+  const faseLengkap = kolomBaru.every((k) => adaKolomProyek.includes(k));
+  if (!faseLengkap) gagal++;
+  console.log(`    data fase proyek: ${faseLengkap ? "LENGKAP" : "ADA YANG HILANG"}`);
 
   const peran = (await klienMentah.unsafe(`SELECT DISTINCT peran FROM th_users ORDER BY peran`)) as unknown as { peran: string }[];
   const peranLama = peran.filter((x) => ["PM", "QA", "DEVELOPER", "BUSINESS_USER", "EKSTERNAL"].includes(x.peran));

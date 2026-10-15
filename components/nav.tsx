@@ -7,7 +7,10 @@ export function Nav({ aktif, peran }: {
   peran: Peran;
 }) {
   type Kunci = "beranda" | "proyek" | "dashboard" | "admin";
-  const tautan: { href: string; label: string; kunci: Kunci }[] = [
+  const penguji = peran === "INTERNAL_KEMENKEU" || peran === "EKSTERNAL_KEMENKEU";
+  const tautan: { href: string; label: string; kunci: Kunci }[] = penguji ? [
+    { href: "/proyek", label: "Proyek", kunci: "proyek" },
+  ] : [
     { href: "/", label: "Beranda", kunci: "beranda" },
     { href: "/dashboard", label: "Dashboard", kunci: "dashboard" },
     { href: "/proyek", label: "Proyek", kunci: "proyek" },
@@ -17,7 +20,7 @@ export function Nav({ aktif, peran }: {
   return (
     <nav aria-label="Navigasi utama" className="sticky top-0 z-20 border-b border-garis bg-kartu/95 shadow-sm shadow-tinta/[0.025] backdrop-blur">
       <div className="mx-auto flex min-h-14 max-w-[1400px] items-center gap-1 px-3 sm:px-6">
-        <Link href="/" className="mr-2 flex shrink-0 items-center gap-2 rounded-md px-1 py-1 focus-visible:outline-2 focus-visible:outline-aksi">
+        <Link href={penguji ? "/proyek" : "/"} className="mr-2 flex shrink-0 items-center gap-2 rounded-md px-1 py-1 focus-visible:outline-2 focus-visible:outline-aksi">
           <span className="flex h-7 w-7 items-center justify-center rounded-md bg-tinta text-[11px] font-bold text-white">T</span>
           <span className="hidden text-[14px] font-bold tracking-tight text-tinta sm:block">TestHub</span>
         </Link>

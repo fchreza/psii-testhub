@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/format";
+import type { FasePengujian } from "@/lib/fase-proyek";
 
 type Calon = { id: string; nama: string; email: string; peran: string };
 type Anggota = Calon & { ditambahkan_pada?: string };
@@ -12,8 +13,8 @@ const namaPeran: Record<string, string> = {
 };
 
 export function KelolaAksesProyek({
-  projectId, calon, anggotaAwal,
-}: { projectId: string; calon: Calon[]; anggotaAwal: Anggota[] }) {
+  projectId, calon, anggotaAwal, faseTersedia,
+}: { projectId: string; calon: Calon[]; anggotaAwal: Anggota[]; faseTersedia: FasePengujian[] }) {
   const [anggota, setAnggota] = useState(anggotaAwal);
   const [pilihan, setPilihan] = useState("");
   const [sibuk, setSibuk] = useState(false);
@@ -44,7 +45,7 @@ export function KelolaAksesProyek({
     } finally { setSibuk(false); }
   }
 
-  async function salinTautan(fase: "SIT" | "UAT") {
+  async function salinTautan(fase: FasePengujian) {
     const url = `${window.location.origin}/proyek/${encodeURIComponent(projectId)}?fase=${fase}`;
     try {
       await navigator.clipboard.writeText(url);
@@ -61,12 +62,16 @@ export function KelolaAksesProyek({
           <p className="text-[11.5px] font-semibold uppercase tracking-[0.15em] text-aksi">Akses penguji</p>
           <h2 id="akses-proyek" className="mt-1 text-[16px] font-semibold text-tinta">Bagikan proyek secara terbatas</h2>
           <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-tinta-2">
-            Tambahkan akun penguji, lalu bagikan tautan SIT atau UAT. Tautan bukan akses publik: pengguna wajib masuk dan terdaftar pada proyek ini.
+            Tambahkan akun penguji, lalu bagikan tautan fase yang tersedia. Tautan bukan akses publik: pengguna wajib masuk dan terdaftar pada proyek ini.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => void salinTautan("SIT")} className="rounded-lg border border-garis px-3 py-2 text-[12.5px] font-semibold text-tinta-2 hover:border-garis-kuat hover:bg-kanvas">Salin tautan SIT</button>
-          <button type="button" onClick={() => void salinTautan("UAT")} className="rounded-lg border border-garis px-3 py-2 text-[12.5px] font-semibold text-tinta-2 hover:border-garis-kuat hover:bg-kanvas">Salin tautan UAT</button>
+          {faseTersedia.map((fase) => (
+            <button key={fase} type="button" onClick={() => void salinTautan(fase)}
+              className="rounded-lg border border-garis px-3 py-2 text-[12.5px] font-semibold text-tinta-2 hover:border-garis-kuat hover:bg-kanvas">
+              Salin tautan {fase}
+            </button>
+          ))}
         </div>
       </div>
 

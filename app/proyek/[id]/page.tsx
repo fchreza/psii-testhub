@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { klienMentah } from "@/db";
 import { Nav } from "@/components/nav";
 import { wajibMasuk, bolehAksesProyek, bolehKelolaProyek, bolehUbahEksekusi } from "@/lib/gerbang";
@@ -8,6 +8,7 @@ import { TabelSkenario, type Skenario, type Modul, type Orang } from "@/componen
 import { KelolaAksesProyek } from "@/components/kelola-akses-proyek";
 import { UbahTahapProyek } from "@/components/ubah-tahap-proyek";
 import { EditorMetadataProyek } from "@/components/editor-metadata-proyek";
+import { faseUntukProyek, labelJenisPengujian, type FasePengujian } from "@/lib/fase-proyek";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,8 @@ export default async function HalamanProyek({
     LEFT JOIN th_users u ON u.id = p.pm_id
     WHERE p.id = $1`, [id],
   )) as unknown as (Record<string, unknown> & {
-    id: string; nama: string; pm_nama: string | null; tahap: string; fase?: string;
+    id: string; nama: string; pm_nama: string | null; tahap: string;
+    aplikasi: string | null; modul: string | null; jenis_pengujian: string;
   })[];
 
   if (!p) notFound();
@@ -48,7 +50,11 @@ export default async function HalamanProyek({
   const kelolaProyek = bolehKelolaProyek(saya.peran);
   const bolehUbah = bolehUbahEksekusi(saya.peran);
 
-  const fase = faseDiminta === "UAT" ? "UAT" : "SIT";
+  const jenisPengujian = p.jenis_pengujian;
+  const faseTersedia = faseUntukProyek(jenisPengujian);
+  const faseDimintaSah = faseTersedia.includes(faseDiminta as FasePengujian);
+  const fase = faseDimintaSah ? faseDiminta as FasePengujian : faseTersedia[0];
+  if (faseDiminta && !faseDimintaSah) redirect(`/proyek/${id}?fase=${fase}`);
 
   const modul = (await klienMentah.unsafe(
     `SELECT id, kode, nama, urutan FROM th_modules WHERE project_id = $1 ORDER BY urutan, kode`,
@@ -113,14 +119,16 @@ export default async function HalamanProyek({
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-tinta">{p.nama}</h1>
               <p className="mt-1 text-[14px] text-tinta-2">
-                {[p.modul_aplikasi, p.unit_bisnis].filter(Boolean).join(" · ") || "—"}
+                {[p.aplikasi ?? p.modul_aplikasi, p.modul].filter(Boolean).join(" · ") || "—"}
                 {p.pm_nama ? ` · PM: ${p.pm_nama}` : ""}
               </p>
             </div>
             {kelolaProyek ? <div className="flex flex-wrap items-center gap-2">
-              <UbahTahapProyek projectId={id} tahap={p.tahap} />
+              <UbahTahapProyek projectId={id} tahap={p.tahap} jenisPengujian={jenisPengujian} />
               <EditorMetadataProyek projectId={id} nilai={{
                 nama: p.nama,
+                aplikasi: p.aplikasi as string | null,
+                modul: p.modul as string | null,
                 modulAplikasi: p.modul_aplikasi as string | null,
                 unitBisnis: p.unit_bisnis as string | null,
                 ruangLingkup: p.ruang_lingkup as string | null,
@@ -147,11 +155,14 @@ export default async function HalamanProyek({
             Dasar Regulasi dan Lingkungan menentukan arti hasil ujinya. */}
         <dl className="mb-5 grid gap-x-6 gap-y-2 rounded-lg border border-garis bg-kartu px-5 py-4 text-[13.5px] sm:grid-cols-2 lg:grid-cols-3">
           {([
+            ["Jenis pengujian", labelJenisPengujian(jenisPengujian)],
+            ["Aplikasi", p.aplikasi ?? p.modul_aplikasi],
+            ["Modul", p.modul],
             ["Dasar regulasi", p.dasar_regulasi],
-            ["Lingkungan uji", p.lingkungan],
+            ["Lingkungan server", p.lingkungan],
             ["Sumber acuan", p.sumber_acuan],
             ["Ruang lingkup", p.ruang_lingkup],
-            ["Alamat server", p.alamat_server],
+            ["Alamat pengujian", p.alamat_server],
             ["Tahun anggaran", p.tahun_anggaran],
             ["Versi dokumen", p.versi_dokumen],
             ["Disusun oleh", p.disusun_oleh],
@@ -170,7 +181,7 @@ export default async function HalamanProyek({
         </dl>
 
         {kelolaProyek && (
-          <KelolaAksesProyek projectId={id} calon={calon} anggotaAwal={anggota} />
+          <KelolaAksesProyek projectId={id} calon={calon} anggotaAwal={anggota} faseTersedia={faseTersedia} />
         )}
 
         {/* Ringkasan angka. Ini yang paling sering ditanya pimpinan, jadi
@@ -192,7 +203,7 @@ export default async function HalamanProyek({
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-1.5 border-b border-garis pb-3">
-          {["SIT","UAT"].map((f) => {
+          {faseTersedia.map((f) => {
             const jumlah = f === fase ? skenario.length : null;
             return (
               <Link key={f} href={`/proyek/${id}?fase=${f}`}

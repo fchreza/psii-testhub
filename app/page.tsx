@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { klienMentah } from "@/db";
 import { Nav } from "@/components/nav";
-import { internal, wajibMasuk } from "@/lib/gerbang";
+import { internal, PERAN_PENGUJI, wajibMasuk } from "@/lib/gerbang";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function Beranda() {
   const saya = await wajibMasuk();
+  if (PERAN_PENGUJI.includes(saya.peran)) redirect("/proyek");
   const cakupan = internal(saya.peran)
     ? "true"
     : `p.id IN (SELECT project_id FROM th_project_members WHERE user_id = '${saya.id}'::uuid)`;

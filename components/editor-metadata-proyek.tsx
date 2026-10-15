@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 type MetadataProyek = {
   nama: string;
+  aplikasi: string | null;
+  modul: string | null;
   modulAplikasi: string | null;
   unitBisnis: string | null;
   ruangLingkup: string | null;
@@ -35,6 +37,8 @@ function tanggalInput(value: string | Date | null): string {
 function buatDraft(nilai: MetadataProyek): Draft {
   return {
     ...nilai,
+    aplikasi: nilai.aplikasi ?? "",
+    modul: nilai.modul ?? "",
     modulAplikasi: nilai.modulAplikasi ?? "",
     unitBisnis: nilai.unitBisnis ?? "",
     ruangLingkup: nilai.ruangLingkup ?? "",
@@ -109,7 +113,10 @@ export function EditorMetadataProyek({ projectId, nilai }: { projectId: string; 
               <div className="flex-1 space-y-4 px-6 py-5 sm:px-8">
                 <Isian label="Nama proyek" nilai={draft.nama} ubah={(v) => set("nama", v)} wajib />
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Isian label="Modul / aplikasi" nilai={draft.modulAplikasi} ubah={(v) => set("modulAplikasi", v)} />
+                  <Isian label="Aplikasi" nilai={draft.aplikasi} ubah={(v) => set("aplikasi", v)} />
+                  <Isian label="Modul" nilai={draft.modul} ubah={(v) => set("modul", v)} />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
                   <Isian label="Unit bisnis / divisi" nilai={draft.unitBisnis} ubah={(v) => set("unitBisnis", v)} />
                 </div>
                 <Isian label="Ruang lingkup" nilai={draft.ruangLingkup} ubah={(v) => set("ruangLingkup", v)} banyak />
@@ -125,7 +132,7 @@ export function EditorMetadataProyek({ projectId, nilai }: { projectId: string; 
                       {["DEV", "SIT", "UAT", "PROD"].map((v) => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
-                  <Isian label="Alamat server" nilai={draft.alamatServer} ubah={(v) => set("alamatServer", v)} />
+                  <Isian label="Alamat pengujian" nilai={draft.alamatServer} ubah={(v) => set("alamatServer", v)} />
                 </div>
                 <div className="grid gap-4 sm:grid-cols-3">
                   <Isian label="Tahun anggaran" tipe="number" nilai={draft.tahunAnggaran} ubah={(v) => set("tahunAnggaran", v)} />

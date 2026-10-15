@@ -1,14 +1,17 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { klienMentah } from "@/db";
 import { Nav } from "@/components/nav";
-import { wajibMasuk, internal } from "@/lib/gerbang";
+import { wajibMasuk, internal, PERAN_PENGUJI } from "@/lib/gerbang";
 import { tanggalID } from "@/lib/waktu";
 import { STATUS_UJI, labelStatus, cn } from "@/lib/format";
+import { labelJenisPengujian } from "@/lib/fase-proyek";
 
 export const dynamic = "force-dynamic";
 
 type Proyek = {
   id: string; nama: string; unit_bisnis: string | null; tahap: string;
+  aplikasi: string | null; modul: string | null; jenis_pengujian: string;
   modul_aplikasi: string | null; target_selesai: string | Date | null;
   total: number; lulus: number; gagal: number; tertunda: number; belum: number;
 };
@@ -43,6 +46,7 @@ const LABEL_TAHAP: Record<string, string> = {
  */
 export default async function HalamanDashboard() {
   const saya = await wajibMasuk();
+  if (PERAN_PENGUJI.includes(saya.peran)) redirect("/proyek");
   const lihatSemua = internal(saya.peran);
 
   /*
@@ -57,7 +61,8 @@ export default async function HalamanDashboard() {
     : `p.id IN (SELECT project_id FROM th_project_members WHERE user_id = '${saya.id}'::uuid)`;
 
   const proyek = (await klienMentah.unsafe(`
-    SELECT p.id, p.nama, p.unit_bisnis, p.tahap, p.modul_aplikasi, p.target_selesai,
+    SELECT p.id, p.nama, p.unit_bisnis, p.tahap, p.aplikasi, p.modul,
+           p.jenis_pengujian, p.modul_aplikasi, p.target_selesai,
            count(s.id)::int AS total,
            count(s.id) FILTER (WHERE s.status = 'PASS')::int    AS lulus,
            count(s.id) FILTER (WHERE s.status = 'FAIL')::int    AS gagal,
@@ -158,7 +163,7 @@ export default async function HalamanDashboard() {
                   </caption>
                   <thead>
                     <tr className="border-b border-garis bg-kanvas text-left">
-                      {["Proyek","Unit","Tahap","Kelulusan","Lulus / total","Kendala","Target"].map((h) => (
+                      {["Proyek","Jenis pengujian","Tahap","Kelulusan","Lulus / total","Kendala","Target"].map((h) => (
                         <th key={h} scope="col"
                           className="whitespace-nowrap px-3 py-2.5 text-[12px] font-semibold uppercase tracking-wide text-tinta-3">
                           {h}
@@ -182,11 +187,13 @@ export default async function HalamanDashboard() {
                               <Link href={`/proyek/${p.id}`} className="font-medium text-tinta hover:text-aksi">
                                 {p.nama}
                               </Link>
-                              {p.modul_aplikasi && (
-                                <span className="mt-0.5 block text-[12px] text-tinta-3">{p.modul_aplikasi}</span>
-                              )}
+                              {(p.aplikasi ?? p.modul_aplikasi) || p.modul ? (
+                                <span className="mt-0.5 block text-[12px] text-tinta-3">
+                                  {[p.aplikasi ?? p.modul_aplikasi, p.modul].filter(Boolean).join(" · ")}
+                                </span>
+                              ) : null}
                             </td>
-                            <td className="px-3 py-2.5 text-tinta-2">{p.unit_bisnis ?? "—"}</td>
+                            <td className="px-3 py-2.5 text-tinta-2">{labelJenisPengujian(p.jenis_pengujian)}</td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-[12.5px] text-tinta-2">
                               {LABEL_TAHAP[p.tahap] ?? p.tahap}
                             </td>
