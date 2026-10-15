@@ -74,6 +74,15 @@ begitu judulnya diganti.
 **Awalan `th_` pada nama tabel**, bukan schema terpisah: Neon menolak
 `search_path` sebagai parameter startup di koneksi pooled.
 
+**Database TERPISAH — jangan pernah menumpang di database proyek lain.**
+TestHub memakai database `psii_testhub` sendiri. Sebelumnya tabel `th_*` ikut
+menumpang di `neondb` milik Angkutin, dan itu keliru: satu database berisi dua
+proyek berarti menghapus salah satu bisa mematikan yang lain, dan batas koneksi
+saling makan. Kalau nanti ada yang meminta "hapus database Neon", periksa dulu
+database mana yang dimaksud — `neondb` berisi Angkutin yang LIVE.
+
+Bucket penyimpanan juga terpisah: `psii-testhub` (bukan `angkutin`).
+
 ## Berkas penting
 
 - `docs/analisa-prd.md` — analisa PRD, celah yang ditemukan, keputusan pemilik produk
