@@ -8,6 +8,7 @@ import { TabelSkenario, type Skenario, type Modul, type Orang } from "@/componen
 import { KelolaAksesProyek } from "@/components/kelola-akses-proyek";
 import { UbahTahapProyek } from "@/components/ubah-tahap-proyek";
 import { EditorMetadataProyek } from "@/components/editor-metadata-proyek";
+import { TombolHapusProyek } from "@/components/tombol-hapus-proyek";
 import { faseUntukProyek, labelJenisPengujian, type FasePengujian } from "@/lib/fase-proyek";
 
 export const dynamic = "force-dynamic";
@@ -143,6 +144,7 @@ export default async function HalamanProyek({
                 disusunOleh: p.disusun_oleh as string | null,
                 statusDokumen: p.status_dokumen as string | null,
               }} />
+              {saya.peran === "ADMIN" && <TombolHapusProyek projectId={id} nama={p.nama} />}
             </div> : (
               <span className="rounded bg-kanvas px-2.5 py-1 text-[13px] font-medium text-tinta-2">
                 {LABEL_TAHAP[p.tahap] ?? p.tahap}

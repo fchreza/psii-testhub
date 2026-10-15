@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { klienMentah } from "@/db";
 import { bolehKelolaProyek, wajibMasukApi } from "@/lib/gerbang";
 import { faseUntukProyek } from "@/lib/fase-proyek";
+import { hapusObjek } from "@/lib/simpanan";
 
 export const dynamic = "force-dynamic";
 const LINGKUNGAN_SAH = ["DEV", "SIT", "UAT", "PROD"];
@@ -36,8 +37,66 @@ export async function POST(req: Request) {
       tanggalMulai?: string | null; targetSelesai?: string | null; projectId?: string; tahap?: string;
       versiDokumen?: string; disusunOleh?: string; statusDokumen?: string } | null;
   if (!isi?.aksi) return NextResponse.json({ pesan: "Aksi wajib diisi." }, { status: 400 });
+  if (isi.aksi === "hapus" && saya.peran !== "ADMIN") {
+    return NextResponse.json({ pesan: "Hanya Admin yang boleh menghapus proyek." }, { status: 403 });
+  }
 
   try {
+    if (isi.aksi === "hapus") {
+      const projectId = isi.projectId ?? "";
+      if (!/^PRJ-\d{3,}$/.test(projectId)) return NextResponse.json({ pesan: "ID proyek tidak sah." }, { status: 400 });
+      const hasil = await klienMentah.begin(async (tx) => {
+        const [proyek] = (await tx.unsafe(
+          `SELECT id, nama, aplikasi, modul_aplikasi, jenis_pengujian, tahap, dibuat_pada
+           FROM th_projects WHERE id = $1 FOR UPDATE`, [projectId],
+        )) as unknown as {
+          id: string; nama: string; aplikasi: string | null; modul_aplikasi: string | null;
+          jenis_pengujian: string; tahap: string; dibuat_pada: string | Date;
+        }[];
+        if (!proyek) return { tidakDitemukan: true as const };
+        const [jumlah] = (await tx.unsafe(
+          `SELECT
+             (SELECT count(*) FROM th_scenarios WHERE project_id = $1)::int AS skenario,
+             (SELECT count(*) FROM th_project_members WHERE project_id = $1)::int AS anggota,
+             (SELECT count(*) FROM th_evidence e JOIN th_scenarios s ON s.id = e.scenario_id WHERE s.project_id = $1)::int AS bukti`,
+          [projectId],
+        )) as unknown as { skenario: number; anggota: number; bukti: number }[];
+        const bukti = (await tx.unsafe(
+          `SELECT e.path FROM th_evidence e
+           JOIN th_scenarios s ON s.id = e.scenario_id
+           WHERE s.project_id = $1`, [projectId],
+        )) as unknown as { path: string }[];
+        await tx.unsafe(
+          `INSERT INTO th_audit_logs (user_id, project_id, aksi, kolom, nilai_lama)
+           VALUES ($1::uuid, $2, 'hapus_proyek', 'proyek', $3)`,
+          [saya.id, projectId, JSON.stringify({
+            nama: proyek.nama,
+            aplikasi: proyek.aplikasi,
+            modulAplikasi: proyek.modul_aplikasi,
+            jenisPengujian: proyek.jenis_pengujian,
+            tahap: proyek.tahap,
+            jumlahSkenario: Number(jumlah.skenario),
+            jumlahAnggota: Number(jumlah.anggota),
+            jumlahBukti: Number(jumlah.bukti),
+            dibuatPada: proyek.dibuat_pada,
+          })],
+        );
+        await tx.unsafe(`DELETE FROM th_projects WHERE id = $1`, [projectId]);
+        return { tidakDitemukan: false as const, bukti };
+      });
+      if (hasil.tidakDitemukan) return NextResponse.json({ pesan: "Proyek tidak ditemukan." }, { status: 404 });
+      let buktiGagal = 0;
+      for (let awal = 0; awal < hasil.bukti.length; awal += 10) {
+        const batch = await Promise.allSettled(hasil.bukti.slice(awal, awal + 10).map((b) => hapusObjek(b.path)));
+        buktiGagal += batch.filter((r) => r.status === "rejected").length;
+      }
+      if (buktiGagal) console.error("[proyek] sebagian berkas bukti gagal dihapus", { projectId, jumlah: buktiGagal });
+      revalidatePath(`/proyek/${projectId}`);
+      revalidatePath("/proyek");
+      revalidatePath("/dashboard");
+      return NextResponse.json({ ok: true, buktiGagal });
+    }
+
     if (isi.aksi === "tambah") {
       if (isi.nama !== undefined && typeof isi.nama !== "string") {
         return NextResponse.json({ pesan: "Nama proyek harus berupa teks." }, { status: 400 });

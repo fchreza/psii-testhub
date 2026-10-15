@@ -4,6 +4,7 @@ import { Nav } from "@/components/nav";
 import { wajibMasuk, internal, bolehKelolaProyek } from "@/lib/gerbang";
 import { tanggalID } from "@/lib/waktu";
 import { TombolProyekBaru } from "@/components/tombol-proyek-baru";
+import { TombolHapusProyek } from "@/components/tombol-hapus-proyek";
 import { labelJenisPengujian } from "@/lib/fase-proyek";
 
 export const dynamic = "force-dynamic";
@@ -143,10 +144,13 @@ export default async function HalamanProyek() {
                         )}
                       </td>
                       <td className="px-3 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-1">
                         <Link href={`/proyek/${p.id}`}
                           className="rounded px-2 py-1 text-[13px] text-aksi hover:bg-aksi-lembut">
                           Buka
                         </Link>
+                        {saya.peran === "ADMIN" && <TombolHapusProyek projectId={p.id} nama={p.nama} />}
+                        </div>
                       </td>
                     </tr>
                   );

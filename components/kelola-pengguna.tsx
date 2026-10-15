@@ -28,10 +28,29 @@ export function KelolaPengguna({
   const [galat, setGalat] = useState<string | null>(null);
   const [sandiBaru, setSandiBaru] = useState<{ nama: string; sandi: string } | null>(null);
   const [sibuk, setSibuk] = useState(false);
+  const [penggunaEdit, setPenggunaEdit] = useState<Pengguna | null>(null);
+  const [draftEdit, setDraftEdit] = useState({ nama: "", email: "", jabatan: "" });
+  const [sibukEdit, setSibukEdit] = useState(false);
 
   const kirim = (body: Record<string, unknown>) => fetch("/api/v1/pengguna", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   });
+
+  const simpanEdit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!penggunaEdit) return;
+    setSibukEdit(true); setGalat(null);
+    try {
+      const r = await kirim({ aksi: "ubah", userId: penggunaEdit.id, ...draftEdit });
+      const hasil = await r.json().catch(() => ({}));
+      if (!r.ok) { setGalat(hasil.pesan ?? "Gagal menyimpan perubahan pengguna."); return; }
+      setDaftar((d) => d.map((x) => x.id === penggunaEdit.id
+        ? { ...x, nama: hasil.nama, email: hasil.email, jabatan: hasil.jabatan }
+        : x));
+      setPenggunaEdit(null); setGalat(null);
+    } catch { setGalat("Tidak dapat terhubung. Periksa koneksi lalu coba lagi."); }
+    finally { setSibukEdit(false); }
+  };
 
   const tambah = async (e: React.FormEvent) => {
     e.preventDefault(); setSibuk(true); setGalat(null); setSandiBaru(null);
@@ -157,6 +176,12 @@ export function KelolaPengguna({
                 </td>
                 <td className="px-4 py-3"><span className={cn("rounded-md px-2 py-1 text-[11.5px] font-semibold", p.aktif ? "bg-lulus-lembut text-lulus" : "bg-kanvas text-tinta-3")}>{p.aktif ? "Aktif" : "Nonaktif"}</span></td>
                 {bolehKelola && <td className="whitespace-nowrap px-4 py-3 text-right">
+                  <button type="button" onClick={() => {
+                    setDraftEdit({ nama: p.nama, email: p.email, jabatan: p.jabatan ?? "" });
+                    setPenggunaEdit(p); setGalat(null);
+                  }} className="rounded-md px-2.5 py-1.5 text-[12px] font-medium text-aksi hover:bg-aksi-lembut">
+                    Edit
+                  </button>
                   {p.id !== sayaId && <>
                     <button type="button" onClick={() => void resetSandi(p)} className="rounded-md px-2.5 py-1.5 text-[12px] font-medium text-tinta-2 hover:bg-kanvas">Sandi baru</button>
                     <button type="button" onClick={() => void ubahAktif(p)} className={cn("ml-1 rounded-md px-2.5 py-1.5 text-[12px] font-medium", p.aktif ? "text-gagal hover:bg-gagal-lembut" : "text-lulus hover:bg-lulus-lembut")}>{p.aktif ? "Nonaktifkan" : "Aktifkan"}</button>
@@ -168,6 +193,44 @@ export function KelolaPengguna({
           </tbody>
         </table>
       </div>
+      {penggunaEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-tinta/40 p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="judul-edit-pengguna"
+            className="w-full max-w-lg rounded-xl border border-garis bg-kartu p-5 shadow-xl sm:p-6">
+            <h2 id="judul-edit-pengguna" className="text-lg font-bold text-tinta">Edit pengguna</h2>
+            <p className="mt-1 text-[13px] text-tinta-3">Peran akun dapat diubah melalui pilihan peran pada daftar.</p>
+            <form onSubmit={simpanEdit} className="mt-4 space-y-3">
+              <div>
+                <label htmlFor="edit-pengguna-nama" className="mb-1 block text-[13px] font-medium text-tinta-2">Nama</label>
+                <input id="edit-pengguna-nama" required maxLength={120} value={draftEdit.nama}
+                  onChange={(e) => setDraftEdit((d) => ({ ...d, nama: e.target.value }))}
+                  className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2.5 text-[14px] outline-none focus:border-aksi" />
+              </div>
+              <div>
+                <label htmlFor="edit-pengguna-email" className="mb-1 block text-[13px] font-medium text-tinta-2">Email</label>
+                <input id="edit-pengguna-email" type="email" autoComplete="email" required maxLength={160} value={draftEdit.email}
+                  onChange={(e) => setDraftEdit((d) => ({ ...d, email: e.target.value }))}
+                  className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2.5 text-[14px] outline-none focus:border-aksi" />
+              </div>
+              <div>
+                <label htmlFor="edit-pengguna-jabatan" className="mb-1 block text-[13px] font-medium text-tinta-2">Jabatan</label>
+                <input id="edit-pengguna-jabatan" maxLength={80} value={draftEdit.jabatan}
+                  onChange={(e) => setDraftEdit((d) => ({ ...d, jabatan: e.target.value }))}
+                  className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2.5 text-[14px] outline-none focus:border-aksi" />
+              </div>
+              {galat && <p role="alert" className="rounded-md border border-gagal bg-gagal-lembut px-3 py-2 text-[13px] text-gagal">{galat}</p>}
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" disabled={sibukEdit} onClick={() => { setPenggunaEdit(null); setGalat(null); }}
+                  className="rounded-lg border border-garis-kuat px-3.5 py-2 text-[13px] font-medium text-tinta-2 hover:bg-kanvas disabled:opacity-60">Batal</button>
+                <button type="submit" disabled={sibukEdit}
+                  className="rounded-lg bg-aksi px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-aksi/90 disabled:opacity-60">
+                  {sibukEdit ? "Menyimpan…" : "Simpan perubahan"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </>
   );
 }

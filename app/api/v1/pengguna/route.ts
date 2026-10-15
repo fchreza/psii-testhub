@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ pesan: "Hanya Admin yang boleh mengelola pengguna." }, { status: 403 });
   }
   const isi = await req.json().catch(() => null) as
-    { aksi?: string; email?: string; nama?: string; jabatan?: string; peran?: string; userId?: string } | null;
+    { aksi?: string; email?: string; nama?: string; jabatan?: string | null; peran?: string; userId?: string } | null;
   if (!isi?.aksi) return NextResponse.json({ pesan: "Aksi wajib diisi." }, { status: 400 });
 
   try {
@@ -37,10 +37,34 @@ export async function POST(req: Request) {
       return NextResponse.json({ id: baru.id, sandi });
     }
 
-    if (!["aktif", "nonaktif", "sandi_baru", "ubah_peran"].includes(isi.aksi)) {
+    if (!["aktif", "nonaktif", "sandi_baru", "ubah_peran", "ubah"].includes(isi.aksi)) {
       return NextResponse.json({ pesan: "Aksi tidak dikenal." }, { status: 400 });
     }
     if (!isi.userId || !UUID.test(isi.userId)) return NextResponse.json({ pesan: "ID pengguna tidak sah." }, { status: 400 });
+
+    if (isi.aksi === "ubah") {
+      if (typeof isi.nama !== "string" || typeof isi.email !== "string" || (isi.jabatan !== undefined && isi.jabatan !== null && typeof isi.jabatan !== "string")) {
+        return NextResponse.json({ pesan: "Nama, email, atau jabatan tidak sah." }, { status: 400 });
+      }
+      const nama = isi.nama.trim();
+      const email = isi.email.trim().toLowerCase();
+      const jabatan = (isi.jabatan ?? "").trim() || null;
+      if (!nama || nama.length > 120) return NextResponse.json({ pesan: "Nama wajib diisi (maksimal 120 karakter)." }, { status: 400 });
+      if (email.length > 160 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        return NextResponse.json({ pesan: "Email tidak sah (maksimal 160 karakter)." }, { status: 400 });
+      }
+      if (jabatan && jabatan.length > 80) return NextResponse.json({ pesan: "Jabatan maksimal 80 karakter." }, { status: 400 });
+      const [duplikat] = (await klienMentah.unsafe(
+        `SELECT id FROM th_users WHERE lower(email) = $1 AND id <> $2::uuid LIMIT 1`, [email, isi.userId],
+      )) as unknown as { id: string }[];
+      if (duplikat) return NextResponse.json({ pesan: "Email itu sudah digunakan pengguna lain." }, { status: 409 });
+      const [hasil] = (await klienMentah.unsafe(
+        `UPDATE th_users SET nama = $1, email = $2, jabatan = $3 WHERE id = $4::uuid RETURNING id`,
+        [nama, email, jabatan, isi.userId],
+      )) as unknown as { id: string }[];
+      if (!hasil) return NextResponse.json({ pesan: "Pengguna tidak ditemukan." }, { status: 404 });
+      return NextResponse.json({ ok: true, nama, email, jabatan });
+    }
 
     if (isi.aksi === "nonaktif") {
       if (isi.userId === saya.id) return NextResponse.json({ pesan: "Tidak bisa menonaktifkan akun sendiri." }, { status: 400 });
@@ -80,6 +104,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[pengguna]", isi.aksi, e instanceof Error ? e.message : e);
+    if (typeof e === "object" && e !== null && "code" in e && e.code === "23505") {
+      return NextResponse.json({ pesan: "Email itu sudah digunakan pengguna lain." }, { status: 409 });
+    }
     return NextResponse.json({ pesan: "Gagal menyimpan perubahan pengguna." }, { status: 500 });
   }
 }

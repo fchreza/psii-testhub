@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { TombolKeluar } from "@/components/tombol-keluar";
 import type { Peran } from "@/lib/gerbang";
 
@@ -20,9 +21,11 @@ export function Nav({ aktif, peran }: {
   return (
     <nav aria-label="Navigasi utama" className="sticky top-0 z-20 border-b border-garis bg-kartu/95 shadow-sm shadow-tinta/[0.025] backdrop-blur">
       <div className="mx-auto flex min-h-14 max-w-[1400px] items-center gap-1 px-3 sm:px-6">
-        <Link href={penguji ? "/proyek" : "/"} className="mr-2 flex shrink-0 items-center gap-2 rounded-md px-1 py-1 focus-visible:outline-2 focus-visible:outline-aksi">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-tinta text-[11px] font-bold text-white">T</span>
-          <span className="hidden text-[14px] font-bold tracking-tight text-tinta sm:block">TestHub</span>
+        <Link href={penguji ? "/proyek" : "/"} aria-label="PSII TestHub" className="mr-2 flex shrink-0 items-center rounded-md px-1 py-1 focus-visible:outline-2 focus-visible:outline-aksi">
+          <Image src="/brand/psii-testhub-symbol.svg" alt="" width={64} height={64}
+            className="h-7 w-7 sm:hidden" />
+          <Image src="/brand/psii-testhub-logo-horizontal-color.svg" alt="" width={482} height={104}
+            className="hidden h-7 w-auto sm:block" />
         </Link>
         <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
           {tautan.map((t) => (
