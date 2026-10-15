@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Sedikit aturan dasar.
+ *
+ * KENAPA HANYA SEDIKIT: ini alat kerja internal. Setiap aturan global tambahan
+ * adalah sesuatu yang harus dipahami orang berikutnya yang menyentuh berkas
+ * ini, dan sebagian besar kebutuhan tampilan sudah tercakup kelas Tailwind di
+ * komponennya.
+ */
+
+body {
+  background: #f7f8fa;
+  color: #101828;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Angka rata di kolom. Dipakai di tabel supaya digit tidak bergoyang. */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/*
+ * Area sentuh minimum 44px untuk kontrol yang disentuh dengan jempol.
+ * Dipakai lewat kelas, bukan diterapkan ke semua tombol — tombol di dalam
+ * tabel memang perlu rapat supaya baris tidak terlalu tinggi.
+ */
+.sentuh { min-height: 44px; }
+
+/* Fokus terlihat. Jangan dihilangkan: pengguna keyboard butuh tahu posisinya. */
+:focus-visible { outline: 2px solid #1570ef; outline-offset: 2px; }
