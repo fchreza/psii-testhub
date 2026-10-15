@@ -109,7 +109,7 @@ export default async function HalamanProyek({
             ["Alamat server", p.alamat_server],
             ["Tahun anggaran", p.tahun_anggaran],
             ["Periode", p.tanggal_mulai
-              ? `${tanggalID(String(p.tanggal_mulai))} – ${tanggalID(String(p.target_selesai ?? ""))}`
+              ? `${tanggalID(p.tanggal_mulai as string | Date)} – ${tanggalID(p.target_selesai as string | Date | null)}`
               : null],
           ] as [string, unknown][]).map(([label, nilai]) => (
             <div key={label} className="flex gap-2">

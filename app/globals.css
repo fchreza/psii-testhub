@@ -29,3 +29,22 @@ body {
 
 /* Fokus terlihat. Jangan dihilangkan: pengguna keyboard butuh tahu posisinya. */
 :focus-visible { outline: 2px solid #1570ef; outline-offset: 2px; }
+
+/*
+ * Dorongan saat panel detail terbuka.
+ *
+ * KENAPA DI <main> DAN LEWAT ATRIBUT, BUKAN padding PADA DIV DI DALAM KOMPONEN:
+ * Panel menutupi sisi kanan. Kalau dorongannya hanya dipasang pada pembungkus
+ * tabel, bagian lain di halaman yang sama — breadcrumb, kartu ringkasan,
+ * metadata — tetap selebar penuh dan TERTUTUP panel. Terukur: 10 elemen
+ * tertutup, termasuk tombol "Proyek baru".
+ *
+ * Atribut dipasang oleh komponen panel (yang tahu kapan terbuka), aturannya
+ * ada di sini. Menaruh paddingnya di komponen berarti setiap halaman yang
+ * memakai panel harus mengulang logika yang sama.
+ *
+ * HANYA >= 640px: di ponsel panelnya menutup penuh, tidak ada ruang mendorong.
+ */
+@media (min-width: 640px) {
+  main[data-panel="buka"] { padding-right: 42vw; }
+}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { cn, STATUS_UJI, labelStatus } from "@/lib/format";
 import { tanggalID } from "@/lib/waktu";
+import { PanelSkenario } from "./panel-skenario";
 
 export type Skenario = {
   id: string; kode: string; fase: string; judul: string;
@@ -36,6 +37,9 @@ export function TabelSkenario({
   const [pesan, setPesan] = useState<{ jenis: "galat" | "info"; teks: string } | null>(null);
   const [sibuk, setSibuk] = useState(false);
   const [saring, setSaring] = useState({ status: "", modul: "", penguji: "", cari: "" });
+  // Skenario yang panelnya sedang terbuka. Disimpan sebagai ID, bukan objeknya:
+  // objek yang disimpan akan basi begitu datanya diubah di tempat.
+  const [bukaPanel, setBukaPanel] = useState<string | null>(null);
 
   const ubah = (id: string, tambalan: Partial<Skenario>) =>
     setData((d) => d.map((x) => (x.id === id ? { ...x, ...tambalan } : x)));
@@ -126,8 +130,11 @@ export function TabelSkenario({
         .filter((k) => k.baris.length > 0)
     : [{ modul: null as Modul | null, baris: tersaring }];
 
+  const terpilih = data.find((x) => x.id === bukaPanel) ?? null;
+
   return (
     <>
+      <div>
       {/* Penyaring */}
       <div className="mb-3 flex flex-wrap items-end gap-3 rounded-lg border border-garis bg-kartu px-4 py-3">
         <div>
@@ -234,8 +241,14 @@ export function TabelSkenario({
                           <td className="whitespace-nowrap px-3 py-2 font-medium text-tinta-2">{s.kode}</td>
 
                           <td className="max-w-[260px] px-3 py-2">
-                            <TeksSel nilai={s.judul} bolehUbah={bolehUbah}
-                              simpan={(v) => void simpan(s.id, { judul: v })} tebal />
+                            {/* Klik judul membuka panel detail — sama seperti Notion,
+                                di mana baris tabel ITU SENDIRI adalah halamannya.
+                                Judulnya tidak lagi diketik di tabel supaya klik-untuk-
+                                buka dan klik-untuk-ketik tidak berebut tempat yang sama. */}
+                            <button type="button" onClick={() => setBukaPanel(s.id)}
+                              className="block w-full whitespace-pre-wrap break-words rounded px-1 py-0.5 text-left font-medium text-tinta hover:bg-kanvas">
+                              {s.judul}
+                            </button>
                           </td>
 
                           <td className="max-w-[280px] px-3 py-2">
@@ -263,15 +276,15 @@ export function TabelSkenario({
                               jujur — "belum ada" bukan kesalahan, tapi juga tidak
                               boleh tampak seperti sudah ada. */}
                           <td className="px-3 py-2">
-                            {s.jumlah_bukti > 0 ? (
-                              <span className="rounded bg-aksi-lembut px-2 py-0.5 text-[12.5px] font-medium text-aksi">
-                                {s.jumlah_bukti} berkas
-                              </span>
-                            ) : (
-                              <span className="text-[12.5px] text-tinta-3" title="Unggah bukti tersedia di langkah berikutnya">
-                                belum ada
-                              </span>
-                            )}
+                            <button type="button" onClick={() => setBukaPanel(s.id)}
+                              className="rounded px-1.5 py-0.5 text-[12.5px] font-medium hover:bg-kanvas"
+                              title="Buka panel untuk mengunggah atau melihat bukti">
+                              {s.jumlah_bukti > 0 ? (
+                                <span className="text-aksi">{s.jumlah_bukti} berkas</span>
+                              ) : (
+                                <span className="text-tinta-3">belum ada</span>
+                              )}
+                            </button>
                           </td>
 
                           <td className="px-3 py-2">
@@ -284,12 +297,18 @@ export function TabelSkenario({
                           </td>
 
                           <td className="max-w-[260px] px-3 py-2">
-                            <TeksSel nilai={s.catatan_tindak_lanjut ?? ""} bolehUbah={bolehUbah}
-                              simpan={(v) => void simpan(s.id, { catatanTindakLanjut: v })}
-                              banyakBaris
-                              /* Status Gagal/Tertunda wajib bercatatan (PRD FR-2.5),
-                                 jadi kolom ini diberi penanda saat itu terjadi. */
-                              wajib={s.status === "FAIL" || s.status === "BLOCKED"} />
+                            <button type="button" onClick={() => setBukaPanel(s.id)}
+                              className={cn("block w-full whitespace-pre-wrap break-words rounded px-1 py-0.5 text-left",
+                                s.catatan_tindak_lanjut ? "text-tinta-2" : "text-tinta-3",
+                                // Status Gagal/Tertunda wajib bercatatan (PRD FR-2.5),
+                                // jadi sel ini ditandai saat itu terjadi.
+                                (s.status === "FAIL" || s.status === "BLOCKED")
+                                  && !s.catatan_tindak_lanjut && "ring-1 ring-gagal/40",
+                                "hover:bg-kanvas")}>
+                              {s.catatan_tindak_lanjut
+                                || ((s.status === "FAIL" || s.status === "BLOCKED")
+                                  ? "Wajib diisi untuk status Gagal/Tertunda" : "Kosong")}
+                            </button>
                             {s.siap_retest && (
                               <span className="mt-1 inline-block rounded bg-lulus-lembut px-2 py-0.5 text-[12px] font-medium text-lulus">
                                 siap diuji ulang
@@ -322,11 +341,37 @@ export function TabelSkenario({
                 {sibuk ? "Menambah…" : "Tambah skenario"}
               </button>
               <p className="text-[13px] text-tinta-3">
-                {data.length} skenario {fase} · klik sel untuk mengubah
+                {data.length} skenario {fase} · klik sel untuk mengubah, klik judul untuk membuka detail
               </p>
             </div>
           )}
         </>
+      )}
+      </div>
+
+      {terpilih && (
+        <PanelSkenario
+          skenario={terpilih}
+          projectId={projectId}
+          bolehUbah={bolehUbah}
+          onTutup={() => setBukaPanel(null)}
+          onUbah={(tambalan) => {
+            /*
+             * Perubahan dari panel memakai jalur simpan yang SAMA dengan tabel,
+             * termasuk pemeriksaan konflik dan aturan "Gagal wajib bercatatan".
+             * Kalau panel punya jalurnya sendiri, aturan itu akan terlewat di
+             * salah satu tempat — dan itu jenis bug yang baru ketahuan lama.
+             */
+            const kunci = Object.keys(tambalan)[0];
+            const kirim: Record<string, unknown> = {};
+            if ("status" in tambalan) kirim.status = tambalan.status;
+            if ("catatan_tindak_lanjut" in tambalan) kirim.catatanTindakLanjut = tambalan.catatan_tindak_lanjut;
+            if ("langkah_pengujian" in tambalan) kirim.langkahPengujian = tambalan.langkah_pengujian;
+            if ("hasil_diharapkan" in tambalan) kirim.hasilDiharapkan = tambalan.hasil_diharapkan;
+            if (kunci && Object.keys(kirim).length === 0) kirim[kunci] = tambalan[kunci as keyof typeof tambalan];
+            void simpan(terpilih.id, kirim);
+          }}
+        />
       )}
     </>
   );

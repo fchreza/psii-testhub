@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 
 type Baris = {
   id: string; nama: string; modul_aplikasi: string | null; unit_bisnis: string | null;
-  tahap: string; lingkungan: string; tanggal_mulai: string | null;
-  target_selesai: string | null; pm_nama: string | null;
+  tahap: string; lingkungan: string; tanggal_mulai: string | Date | null;
+  target_selesai: string | Date | null; pm_nama: string | null;
   total: number; lulus: number; gagal: number; tertunda: number; belum: number;
 };
 

@@ -40,8 +40,24 @@ export function capWaktuWIB(sekarang: Date = new Date()): string {
  * sedang menjalankannya. Memakai UTC membuat hasilnya sama di server (UTC)
  * maupun di peramban pengguna (WIB).
  */
-export function tanggalID(ymd: string | null | undefined): string {
-  if (!ymd) return "";
+export function tanggalID(ymd: string | Date | null | undefined): string {
+  if (ymd === null || ymd === undefined || ymd === "") return "";
+
+  /*
+   * KENAPA HARUS MENANGANI OBJEK Date:
+   * Driver Postgres mengembalikan kolom `date` sebagai objek Date, bukan
+   * string. Kalau nilainya dipaksa jadi string, hasilnya menjadi
+   * "Sat Oct 31 2026 00:00:00 GMT+0000 (Coordinated Universal Time)" — dan
+   * kalimat sepanjang itu masuk ke dalam sel tabel, merusak tata letaknya.
+   * Ini pernah terjadi pada kolom Target di dashboard.
+   */
+  if (ymd instanceof Date) {
+    if (Number.isNaN(ymd.getTime())) return "";
+    return new Intl.DateTimeFormat("id-ID", {
+      day: "numeric", month: "short", year: "numeric", timeZone: "UTC",
+    }).format(ymd);
+  }
+
   const bersih = String(ymd).slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(bersih)) return String(ymd);
   return new Intl.DateTimeFormat("id-ID", {

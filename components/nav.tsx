@@ -13,10 +13,16 @@ import type { Peran } from "@/lib/gerbang";
  * membuat tombol "Keluar" berakhir di 382px — melewati lebar layar sehingga
  * seluruh halaman bisa digulir ke kanan.
  */
-export function Nav({ aktif, peran }: { aktif?: "beranda" | "proyek" | "pengguna"; peran: Peran }) {
-  type Kunci = "beranda" | "proyek" | "pengguna";
+export function Nav({ aktif, peran }: { aktif?: "beranda" | "proyek" | "dashboard" | "pengguna"; peran: Peran }) {
+  type Kunci = "beranda" | "proyek" | "dashboard" | "pengguna";
+  /*
+   * KENAPA DASHBOARD DITARUH SEBELUM PROYEK:
+   * Pimpinan membuka aplikasi untuk melihat ringkasan, bukan untuk memilih
+   * proyek satu per satu. Yang paling sering dibuka ditaruh paling kiri.
+   */
   const tautan: { href: string; label: string; kunci: Kunci }[] = [
     { href: "/", label: "Beranda", kunci: "beranda" },
+    { href: "/dashboard", label: "Dashboard", kunci: "dashboard" },
     { href: "/proyek", label: "Proyek", kunci: "proyek" },
   ];
   if (peran === "ADMIN") {
