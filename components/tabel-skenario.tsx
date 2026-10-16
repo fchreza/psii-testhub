@@ -316,6 +316,18 @@ export function TabelSkenario({
         </p>
       )}
 
+      {bolehKelolaSkenario && data.length > 0 && (
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <button type="button" onClick={() => tambah(modul[0]?.id ?? null)}
+            className="sentuh inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md border border-garis bg-kartu px-3.5 text-[14px] font-medium text-tinta-2 hover:border-garis-kuat sm:w-auto">
+            {data.some((x) => x.id.startsWith("draft:")) ? "Lanjutkan draf" : "Tambah skenario"}
+          </button>
+          <p className="text-[13px] text-tinta-3">
+            {data.length} skenario {fase} · klik sel untuk mengubah, klik judul untuk membuka detail
+          </p>
+        </div>
+      )}
+
       {data.length > 0 && tersaring.length === 0 ? (
         <div className="rounded-lg border border-dashed border-garis-kuat bg-kartu px-6 py-10 text-center">
           <p className="text-[15px] font-medium text-tinta">Tidak ada skenario yang cocok dengan filter</p>
@@ -476,18 +488,6 @@ export function TabelSkenario({
               </div>
             </section>
           ))}
-
-          {bolehKelolaSkenario && (
-            <div className="flex flex-wrap items-center gap-4">
-              <button type="button" onClick={() => tambah(modul[0]?.id ?? null)}
-                className="sentuh inline-flex items-center justify-center gap-2 rounded-md border border-garis bg-kartu px-3.5 text-[14px] font-medium text-tinta-2 hover:border-garis-kuat">
-                {data.some((x) => x.id.startsWith("draft:")) ? "Lanjutkan draf" : "Tambah skenario"}
-              </button>
-              <p className="text-[13px] text-tinta-3">
-                {data.length} skenario {fase} · klik sel untuk mengubah, klik judul untuk membuka detail
-              </p>
-            </div>
-          )}
         </>
       )}
       </div>
