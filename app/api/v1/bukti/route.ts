@@ -49,36 +49,44 @@ export async function POST(req: Request) {
       if (typeof ukuran !== "number" || !Number.isInteger(ukuran) || ukuran <= 0 || ukuran > BATAS_BUKTI) {
         return NextResponse.json({ pesan: `Ukuran berkas harus lebih dari 0 dan tidak melebihi ${BATAS_BUKTI / 1024 / 1024} MB.` }, { status: 400 });
       }
-      const [skenario] = (await klienMentah.unsafe(
-        `SELECT id FROM th_scenarios WHERE id = $1::uuid AND project_id = $2`, [scenarioId, projectId],
-      )) as unknown as { id: string }[];
-      if (!skenario) return NextResponse.json({ pesan: "Skenario tidak ada di proyek ini." }, { status: 404 });
+      const hasilIntent = await klienMentah.begin(async (tx) => {
+        // Berbagi lock dengan DELETE skenario agar intent tidak hilang melalui cascade.
+        const [skenario] = (await tx.unsafe(
+          `SELECT id FROM th_scenarios WHERE id = $1::uuid AND project_id = $2 FOR UPDATE`, [scenarioId, projectId],
+        )) as unknown as { id: string }[];
+        if (!skenario) return { status: "skenario_tidak_ada" as const };
 
-      let [intent] = (await klienMentah.unsafe(
-        `INSERT INTO th_evidence_uploads
-           (user_id, project_id, scenario_id, idempotency_key, staging_path, final_path,
-            nama_asli, tipe, ukuran, expires_at)
-         VALUES ($1::uuid, $2, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, now() + $10::interval)
-         ON CONFLICT (user_id, idempotency_key) DO NOTHING
-         RETURNING id, project_id, scenario_id, staging_path, final_path, nama_asli, tipe, ukuran, status, evidence_id`,
-        [saya.id, projectId, scenarioId, idempotencyKey,
-         kunciSementara(projectId, scenarioId, mime), kunciBukti(projectId, scenarioId, mime),
-         namaBerkas.trim().slice(0, 240), mime, ukuran, `${MASA_URL_UNGGAH_DETIK} seconds`],
-      )) as unknown as {
-        id: string; project_id: string; scenario_id: string; staging_path: string; final_path: string; nama_asli: string; tipe: string;
-        ukuran: number; status: string; evidence_id: string | null;
-      }[];
+        let [intent] = (await tx.unsafe(
+          `INSERT INTO th_evidence_uploads
+             (user_id, project_id, scenario_id, idempotency_key, staging_path, final_path,
+              nama_asli, tipe, ukuran, expires_at)
+           VALUES ($1::uuid, $2, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, now() + $10::interval)
+           ON CONFLICT (user_id, idempotency_key) DO NOTHING
+           RETURNING id, project_id, scenario_id, staging_path, final_path, nama_asli, tipe, ukuran, status, evidence_id`,
+          [saya.id, projectId, scenarioId, idempotencyKey,
+           kunciSementara(projectId, scenarioId, mime), kunciBukti(projectId, scenarioId, mime),
+           namaBerkas.trim().slice(0, 240), mime, ukuran, `${MASA_URL_UNGGAH_DETIK} seconds`],
+        )) as unknown as {
+          id: string; project_id: string; scenario_id: string; staging_path: string; final_path: string; nama_asli: string; tipe: string;
+          ukuran: number; status: string; evidence_id: string | null;
+        }[];
 
-      if (!intent) {
-        [intent] = (await klienMentah.unsafe(
-          `SELECT id, project_id, scenario_id, staging_path, final_path, nama_asli, tipe, ukuran, status, evidence_id
-           FROM th_evidence_uploads WHERE user_id = $1::uuid AND idempotency_key = $2::uuid`,
-          [saya.id, idempotencyKey],
-        )) as unknown as typeof intent[];
+        if (!intent) {
+          [intent] = (await tx.unsafe(
+            `SELECT id, project_id, scenario_id, staging_path, final_path, nama_asli, tipe, ukuran, status, evidence_id
+             FROM th_evidence_uploads WHERE user_id = $1::uuid AND idempotency_key = $2::uuid`,
+            [saya.id, idempotencyKey],
+          )) as unknown as typeof intent[];
+        }
+        return intent ? { status: "siap" as const, intent } : { status: "gagal" as const };
+      });
+      if (hasilIntent.status === "skenario_tidak_ada") {
+        return NextResponse.json({ pesan: "Skenario tidak ada di proyek ini." }, { status: 404 });
       }
-      if (!intent) {
+      if (hasilIntent.status === "gagal") {
         return NextResponse.json({ pesan: "Intent unggah tidak dapat dibuat." }, { status: 500 });
       }
+      const intent = hasilIntent.intent;
       if (intent.project_id !== projectId || intent.scenario_id !== scenarioId) {
         return NextResponse.json({ pesan: "Idempotency key sudah terikat ke skenario lain." }, { status: 409 });
       }

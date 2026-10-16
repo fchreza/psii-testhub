@@ -48,14 +48,14 @@ export type KolomSkenario =
   | "siapRetest";
 
 /**
- * Tester yang sudah mendapat akses ke proyek hanya dapat mencatat hasil aktual
- * dan temuan/tindak lanjut. Definisi, status, penugasan, lembar, dan retest
- * tetap dikelola Admin/Internal PSII; Pimpinan tetap hanya-baca.
+ * Tester yang ditugaskan dapat mengubah hasil aktual, status, dan catatan
+ * tindak lanjut. Definisi, penugasan, lembar, dan retest tetap dikelola
+ * Admin/Internal PSII; Pimpinan tetap hanya-baca.
  */
 export function bolehUbahKolomSkenario(peran: Peran, kolom: KolomSkenario): boolean {
   if (bolehKelolaSkenario(peran)) return true;
   if (peran === "INTERNAL_KEMENKEU" || peran === "EKSTERNAL_KEMENKEU") {
-    return kolom === "hasilAktual" || kolom === "catatanTindakLanjut";
+    return kolom === "hasilAktual" || kolom === "status" || kolom === "catatanTindakLanjut";
   }
   return false;
 }

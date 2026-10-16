@@ -9,6 +9,7 @@ import {
   versiMasihAktual, enkodeKursorRiwayat, parseKursorRiwayat,
 } from "../lib/validasi-bukti";
 import { finalisasiUpload } from "../lib/alur-bukti";
+import { sebabBlokirHapusSkenario } from "../lib/keamanan-hapus-skenario";
 
 test("matriks akses: internal melihat portofolio, tester dibatasi penugasan", () => {
   const portofolio = new Set(["ADMIN", "PIMPINAN", "INTERNAL_PSII"]);
@@ -24,9 +25,9 @@ test("matriks akses: internal melihat portofolio, tester dibatasi penugasan", ()
   }
 });
 
-test("tester hanya dapat mengedit hasil aktual dan temuan/tindak lanjut", () => {
-  const bolehTester = ["hasilAktual", "catatanTindakLanjut"] as const;
-  const khususPengelola = ["judul", "langkahPengujian", "hasilDiharapkan", "status", "pengujiId", "moduleId", "siapRetest"] as const;
+test("tester dapat mengubah hasil aktual, status, dan tindak lanjut saja", () => {
+  const bolehTester = ["hasilAktual", "status", "catatanTindakLanjut"] as const;
+  const khususPengelola = ["judul", "langkahPengujian", "hasilDiharapkan", "pengujiId", "moduleId", "siapRetest"] as const;
   for (const role of ["INTERNAL_KEMENKEU", "EKSTERNAL_KEMENKEU"] as const) {
     for (const kolom of bolehTester) assert.equal(bolehUbahKolomSkenario(role, kolom), true, `${role}:${kolom}`);
     for (const kolom of khususPengelola) assert.equal(bolehUbahKolomSkenario(role, kolom), false, `${role}:${kolom}`);
@@ -36,6 +37,16 @@ test("tester hanya dapat mengedit hasil aktual dan temuan/tindak lanjut", () => 
     assert.equal(bolehUbahKolomSkenario("ADMIN", kolom), true, `ADMIN:${kolom}`);
     assert.equal(bolehUbahKolomSkenario("INTERNAL_PSII", kolom), true, `INTERNAL_PSII:${kolom}`);
   }
+});
+
+test("penghapusan skenario hanya untuk Admin/Internal PSII dan memblokir jejak bukti/unggahan", () => {
+  for (const role of PERAN_AKUN) {
+    assert.equal(bolehKelolaSkenario(role), role === "ADMIN" || role === "INTERNAL_PSII", `${role}: delete`);
+  }
+  assert.equal(sebabBlokirHapusSkenario(0, 0), null);
+  assert.equal(sebabBlokirHapusSkenario(1, 0), "bukti", "bukti aktif maupun tombstone tetap terlindungi");
+  assert.equal(sebabBlokirHapusSkenario(0, 1), "unggahan", "intent upload tidak ikut terhapus lewat cascade");
+  assert.equal(sebabBlokirHapusSkenario(1, 1), "bukti");
 });
 
 test("Origin hanya menerima origin yang sama persis dan menolak nilai hilang/null", () => {

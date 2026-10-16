@@ -309,7 +309,7 @@ export function PanelSkenario({
                 {draf.judul || (isDraft ? "Skenario baru" : "Tanpa judul")}
               </h2>
               <p className="mt-1 text-[12px] text-tinta-3">
-                {isDraft ? "Tulis judul untuk membuat skenario. Belum ada data yang disimpan." : bolehUbah ? "Kolom yang dapat Anda ubah bertanda pensil; simpan perubahan di bagian bawah." : "Panel ini hanya-baca untuk peran Pimpinan."}
+                {isDraft ? "Tulis judul untuk membuat skenario. Belum ada data yang disimpan." : bolehUbah ? "Status dan kolom bertanda pensil dapat Anda ubah; simpan perubahan di bagian bawah." : "Panel ini hanya-baca untuk peran Pimpinan."}
               </p>
               {adaDrafKotor && <Feedback kind="warning" className="mt-2 px-2.5 py-2 text-[12px]">Ada teks yang belum tersimpan</Feedback>}
             </div>
@@ -341,10 +341,12 @@ export function PanelSkenario({
               label, bukan membaca kalimat. */}
           <dl className="divide-y divide-garis rounded-xl border border-garis bg-kanvas/30 px-3.5">
             <Sifat label="Status">
-              {bolehKelolaSkenario ? (
+              {bolehUbah ? (
                 <Select value={draf.status} disabled={simpanSibuk} wrapClassName="w-auto"
+                  aria-label="Ubah status skenario"
+                  title="Pilih status skenario"
                   onChange={(e) => ubahDraf("status", e.target.value)}
-                  className={cn("h-9 w-auto rounded-md py-1 pl-2 pr-8 text-[13px] font-medium shadow-none", st.kelas)}>
+                  className={cn("h-9 w-auto rounded-md py-1 pl-2 pr-8 text-[13px] font-medium shadow-none", st.kelas, "cursor-pointer hover:border-aksi/50 focus-visible:ring-2 focus-visible:ring-aksi")}>
                   {["PENDING","PASS","FAIL","BLOCKED"].map((x) => (
                     <option key={x} value={x}>{labelStatus(x)}</option>
                   ))}
