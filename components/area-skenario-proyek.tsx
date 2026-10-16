@@ -8,6 +8,7 @@ import { LembarSkenario } from "@/components/lembar-skenario";
 import { useFocusTrap } from "@/components/use-focus-trap";
 import { Button, Feedback } from "@/components/ui";
 import type { FasePengujian } from "@/lib/fase-proyek";
+import { ambilRefreshTertundaJikaAman, tundaRefreshJikaDrafAktif } from "@/lib/lembar-skenario-state";
 
 type Statistik = { total: number; lulus: number; gagal: number; tertunda: number; belum: number };
 
@@ -36,6 +37,11 @@ export function AreaSkenarioProyek({
   const [lembarDipilih, setLembarDipilih] = useState<string | null>(modul[0]?.id ?? null);
   const [menyegarkan, setMenyegarkan] = useState(false);
   const [drafAktif, setDrafAktif] = useState(false);
+  const drafAktifRef = useRef(false);
+  const laporkanDrafAktif = useCallback((aktif: boolean) => {
+    drafAktifRef.current = aktif;
+    setDrafAktif(aktif);
+  }, []);
   const [pesan, setPesan] = useState<{ jenis: "status" | "galat" | "peringatan"; teks: string } | null>(null);
   const [tautanTertunda, setTautanTertunda] = useState<string | null>(null);
   const pengendali = useRef<AbortController | null>(null);
@@ -55,8 +61,7 @@ export function AreaSkenarioProyek({
   }, [projectId, modul]);
 
   const segarkan = useCallback(async (manual: boolean) => {
-    if (drafAktif) {
-      refreshTertunda.current = true;
+    if (tundaRefreshJikaDrafAktif(drafAktifRef, refreshTertunda)) {
       if (manual) setPesan({ jenis: "peringatan", teks: "Selesaikan atau buang draf skenario sebelum memperbarui data." });
       return;
     }
@@ -96,7 +101,7 @@ export function AreaSkenarioProyek({
         setMenyegarkan(false);
       }
     }
-  }, [projectId, fase, drafAktif]);
+  }, [projectId, fase]);
 
   const jadwalkanRefresh = useCallback(() => {
     if (pengaturRefresh.current) clearTimeout(pengaturRefresh.current);
@@ -127,8 +132,7 @@ export function AreaSkenarioProyek({
         document.removeEventListener("click", jagaNavigasi, true);
       };
     }
-    if (refreshTertunda.current) {
-      refreshTertunda.current = false;
+    if (ambilRefreshTertundaJikaAman(drafAktifRef, refreshTertunda)) {
       if (pengaturRefresh.current) {
         clearTimeout(pengaturRefresh.current);
         pengaturRefresh.current = null;
@@ -239,7 +243,7 @@ export function AreaSkenarioProyek({
             bolehHapusBukti={bolehHapusBukti}
             bolehAdminHapusSkenario={bolehAdminHapusSkenario}
             onDataMutasi={jadwalkanRefresh}
-            onDraftChange={setDrafAktif}
+            onDraftChange={laporkanDrafAktif}
           />
         </section>
       )}
