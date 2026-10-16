@@ -31,6 +31,21 @@ test("matriks akses: internal melihat portofolio, tester dibatasi penugasan", ()
   }
 });
 
+test("akses daftar dan reveal multi-akun tetap project-scoped; hanya pengelola dapat menulis", () => {
+  for (const role of ["INTERNAL_KEMENKEU", "EKSTERNAL_KEMENKEU"] as const) {
+    assert.equal(bolehAksesProyekPeran(role, false), false, `${role}: akun tanpa assignment tidak dapat melihat proyek`);
+    assert.equal(bolehAksesProyekPeran(role, true), true, `${role}: akun yang ditugaskan dapat melihat proyek`);
+    assert.equal(bolehLihatAkunUji(role), true, `${role}: dapat melihat/reveal akun pada proyek yang diizinkan`);
+    assert.equal(bolehKelolaAkunUji(role), false, `${role}: tidak dapat menambah/mengubah/menghapus akun`);
+  }
+  assert.equal(bolehLihatAkunUji("PIMPINAN"), false);
+  assert.equal(bolehKelolaAkunUji("PIMPINAN"), false);
+  for (const role of ["ADMIN", "INTERNAL_PSII"] as const) {
+    assert.equal(bolehLihatAkunUji(role), true);
+    assert.equal(bolehKelolaAkunUji(role), true);
+  }
+});
+
 test("tester dapat mengubah hasil aktual, status, dan tindak lanjut saja", () => {
   const bolehTester = ["hasilAktual", "status", "catatanTindakLanjut"] as const;
   const khususPengelola = ["judul", "langkahPengujian", "hasilDiharapkan", "pengujiId", "moduleId", "siapRetest"] as const;

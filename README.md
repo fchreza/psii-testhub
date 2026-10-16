@@ -42,7 +42,7 @@ laporan, dan penyaring lanjutan lintas proyek.
 ```bash
 cp .env.contoh .env.local      # isi DATABASE_URL dan SESI_SECRET
 npm install
-npm run migrasi -- db/migrasi-001.sql db/migrasi-002-peran.sql db/migrasi-003-pemulihan-sandi.sql db/migrasi-004-jenis-pengujian.sql db/migrasi-005-ketahanan-operasional.sql db/migrasi-006-akun-uji.sql --setuju-migrasi-004 --setuju-migrasi-006
+npm run migrasi -- db/migrasi-001.sql db/migrasi-002-peran.sql db/migrasi-003-pemulihan-sandi.sql db/migrasi-004-jenis-pengujian.sql db/migrasi-005-ketahanan-operasional.sql db/migrasi-006-akun-uji.sql db/migrasi-007-multi-akun-uji.sql --setuju-migrasi-004 --setuju-migrasi-006 --setuju-migrasi-007
 npm run akun -- <email> "<Nama>" "<Jabatan>"   # akun admin pertama
 npm run dev                    # http://localhost:3200
 ```
@@ -67,14 +67,18 @@ domain yang sudah diverifikasi di Resend; `APP_URL` production harus HTTPS. Tanp
 konfigurasi ini, halaman pemulihan akan mengarahkan pengguna untuk menghubungi Admin.
 
 Runner migrasi tidak memiliki daftar default: pilih file secara eksplisit. Migrasi
-`004` dan `006` memerlukan flag acknowledgement tersendiri setelah SQL ditinjau.
+`004`, `006`, dan `007` memerlukan flag acknowledgement tersendiri setelah SQL ditinjau.
 Di `NODE_ENV=production`, runner juga menolak berjalan tanpa `--setujui-produksi`.
-Migrasi `006` hanya membuat tabel akun uji kosong; tidak ada password yang di-backfill.
-Pada database production, jalankan migration itu sendiri hanya setelah pemilik meninjau
-dan menyetujui SQL tepatnya:
+Migrasi `006` membuat tabel akun uji. Migrasi `007` mengubah batasan satu akun per proyek
+menjadi daftar akun: setiap baris lama dipertahankan, diberi UUID dan label “Akun uji 1”,
+sedangkan nonce, ciphertext, tag, versi format, dan audit tidak diubah. Baris lama tetap
+dapat dibuka dengan format enkripsi v1; akun baru memakai AES-256-GCM v2 yang mengikat
+data ke ID proyek dan ID akun. Migrasi ini tidak men-dekripsi atau mengisi ulang password.
+Pada database production, migration 007 harus ditinjau dan disetujui secara terpisah
+sebelum dijalankan:
 
 ```bash
-NODE_ENV=production npm run migrasi -- db/migrasi-006-akun-uji.sql --setuju-migrasi-006 --setujui-produksi
+NODE_ENV=production npm run migrasi -- db/migrasi-007-multi-akun-uji.sql --setuju-migrasi-007 --setujui-produksi
 ```
 
 Username dan password akun uji dienkripsi dengan AES-256-GCM; kuncinya diturunkan
@@ -122,6 +126,6 @@ Bucket penyimpanan juga terpisah: `psii-testhub` (bukan `angkutin`).
 
 - `docs/analisa-prd.md` — analisa PRD, celah yang ditemukan, keputusan pemilik produk
 - `docs/plan-irisan-1.md` — rencana pengerjaan dan temuan dari berkas contoh
-- `db/migrasi-001.sql`–`db/migrasi-006-akun-uji.sql` — skema, peran, operasional, dan kredensial uji terenkripsi
+- `db/migrasi-001.sql`–`db/migrasi-007-multi-akun-uji.sql` — skema, peran, operasional, dan kredensial uji terenkripsi multi-akun
 - `lib/waktu.ts` — satu sumber tanggal WIB
 - `lib/gerbang.ts` — satu tempat pemeriksaan sesi dan hak akses

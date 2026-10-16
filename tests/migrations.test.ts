@@ -12,6 +12,7 @@ const MIGRASI = [
   "db/migrasi-004-jenis-pengujian.sql",
   "db/migrasi-005-ketahanan-operasional.sql",
   "db/migrasi-006-akun-uji.sql",
+  "db/migrasi-007-multi-akun-uji.sql",
 ];
 
 async function databaseUji() {
@@ -20,7 +21,7 @@ async function databaseUji() {
   return db;
 }
 
-test("migrasi 001–006 terpasang bersih dan seluruh skema wajib tersedia", async () => {
+test("migrasi 001–007 terpasang bersih dan seluruh skema wajib tersedia", async () => {
   const db = await databaseUji();
   try {
     const [tabel, kolom, indeks, peran] = await Promise.all([
