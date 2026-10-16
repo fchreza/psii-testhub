@@ -8,10 +8,10 @@ menggantikan spreadsheet terpisah-pisah yang dipakai sekarang.
 Dari berkas UAT nyata di kantor (42 skenario, 6 modul):
 
 - **10 dari 42 skenario (24%) tidak terhitung** di lembar rekap — kolom Status
-  di sheet D kosong semua, sementara kolom Hasil terisi. Rekap menyebut 32,
-  padahal ada 42. Rekap manual tidak bisa dipercaya.
+di sheet D kosong semua, sementara kolom Hasil terisi. Rekap menyebut 32,
+padahal ada 42. Rekap manual tidak bisa dipercaya.
 - **47 gambar bukti ditanam di dalam berkas**, total 8,2 MB. Itu sebabnya
-  berkasnya berat dan lambat dibuka.
+berkasnya berat dan lambat dibuka.
 - Tidak ada satu layar pun untuk pimpinan melihat progres lintas proyek.
 
 ## Keadaan sekarang
@@ -20,17 +20,18 @@ Dari berkas UAT nyata di kantor (42 skenario, 6 modul):
 
 | Bagian | Keadaan |
 |---|---|
-| Skema basis data | 8 tabel, 11 indeks aplikasi, diverifikasi oleh runner migrasi |
+| Skema basis data | Tabel, kolom, dan indeks wajib diverifikasi oleh runner migrasi |
 | Masuk & peran | 5 peran, scrypt, cookie bertanda tangan, batas percobaan per-email |
 | Pemulihan sandi | Tautan email sekali pakai, berlaku 30 menit, rate-limited, membatalkan sesi lama |
-| Hak akses per proyek | Internal Kemenkeu dan Eksternal Kemenkeu hanya melihat proyek yang ditugaskan |
+| Hak akses per proyek | Internal/Eksternal Kemenkeu hanya melihat proyek yang ditugaskan |
 | Dashboard Admin | Area privat; Admin mengelola akun, Pimpinan dapat meninjau secara baca-saja |
 | Tautan penguji | Tautan SIT/UAT tetap meminta login dan penugasan proyek; bukan akses publik |
 | Proyek | Metadata Cover dapat diubah Admin/Internal PSII dan tercatat pada audit log |
+| Akun uji proyek | Kredensial opsional dienkripsi; penguji yang ditugaskan dapat melihatnya, Pimpinan tidak |
 | Skenario SIT & UAT | Admin/Internal PSII mengelola definisi; tester mengisi status, hasil aktual, dan catatan |
-| Bukti pengujian | Unggah dan daftar bukti; penghapusan hanya Admin/Internal PSII |
+| Bukti pengujian | Admin, Internal PSII, dan penguji yang memiliki akses proyek dapat menghapus bukti |
 | Dashboard | Ringkasan dibatasi ke portofolio yang boleh dilihat akun |
-| Audit log | Perubahan hasil/status, catatan, bukti, dan tahap proyek tercatat |
+| Audit log | Perubahan hasil/status, catatan, bukti, akun uji, dan tahap proyek tercatat |
 | Aturan FR-2.5 | Status Gagal/Tertunda wajib bercatatan atau berbukti |
 
 Belum dikerjakan: Berita Acara & tanda tangan digital, impor .xlsx, ekspor
@@ -41,7 +42,7 @@ laporan, dan penyaring lanjutan lintas proyek.
 ```bash
 cp .env.contoh .env.local      # isi DATABASE_URL dan SESI_SECRET
 npm install
-npm run migrasi -- db/migrasi-001.sql db/migrasi-002-peran.sql db/migrasi-003-pemulihan-sandi.sql db/migrasi-004-jenis-pengujian.sql db/migrasi-005-ketahanan-operasional.sql --setuju-migrasi-004
+npm run migrasi -- db/migrasi-001.sql db/migrasi-002-peran.sql db/migrasi-003-pemulihan-sandi.sql db/migrasi-004-jenis-pengujian.sql db/migrasi-005-ketahanan-operasional.sql db/migrasi-006-akun-uji.sql --setuju-migrasi-004 --setuju-migrasi-006
 npm run akun -- <email> "<Nama>" "<Jabatan>"   # akun admin pertama
 npm run dev                    # http://localhost:3200
 ```
@@ -65,16 +66,20 @@ di `.env.local`/environment deployment. `RESEND_FROM` harus memakai alamat pada
 domain yang sudah diverifikasi di Resend; `APP_URL` production harus HTTPS. Tanpa
 konfigurasi ini, halaman pemulihan akan mengarahkan pengguna untuk menghubungi Admin.
 
-Runner migrasi tidak memiliki daftar default: pilih file secara eksplisit agar
-migrasi `004` (yang membutuhkan tinjauan/persetujuan) tidak berjalan tanpa sengaja.
-Flag `--setuju-migrasi-004` adalah pengakuan eksplisit setelah SQL `004` ditinjau;
-di `NODE_ENV=production`, runner juga menolak berjalan tanpa `--setujui-produksi`.
-Pada database production yang sudah memakai migrasi `001`–`004`, migrasi baru dapat
-dijalankan sendiri setelah pemilik menyetujui SQL tepatnya:
+Runner migrasi tidak memiliki daftar default: pilih file secara eksplisit. Migrasi
+`004` dan `006` memerlukan flag acknowledgement tersendiri setelah SQL ditinjau.
+Di `NODE_ENV=production`, runner juga menolak berjalan tanpa `--setujui-produksi`.
+Migrasi `006` hanya membuat tabel akun uji kosong; tidak ada password yang di-backfill.
+Pada database production, jalankan migration itu sendiri hanya setelah pemilik meninjau
+dan menyetujui SQL tepatnya:
 
 ```bash
-NODE_ENV=production npm run migrasi -- db/migrasi-005-ketahanan-operasional.sql --setujui-produksi
+NODE_ENV=production npm run migrasi -- db/migrasi-006-akun-uji.sql --setuju-migrasi-006 --setujui-produksi
 ```
+
+Username dan password akun uji dienkripsi dengan AES-256-GCM; kuncinya diturunkan
+secara terpisah menggunakan HKDF dari `SESI_SECRET`. Jaga nilai itu tetap stabil:
+rotasi `SESI_SECRET` tanpa re-enkripsi akan membuat password tersimpan tidak dapat dibuka.
 
 Jangan jalankan perintah produksi sebelum persetujuan pemilik dan verifikasi target
 database TestHub. Runner memeriksa tabel, kolom, indeks, dan role; setiap kekurangan
@@ -117,6 +122,6 @@ Bucket penyimpanan juga terpisah: `psii-testhub` (bukan `angkutin`).
 
 - `docs/analisa-prd.md` — analisa PRD, celah yang ditemukan, keputusan pemilik produk
 - `docs/plan-irisan-1.md` — rencana pengerjaan dan temuan dari berkas contoh
-- `db/migrasi-001.sql`, `db/migrasi-002-peran.sql`, `db/migrasi-003-pemulihan-sandi.sql` — skema, peran, dan pemulihan sandi
+- `db/migrasi-001.sql`–`db/migrasi-006-akun-uji.sql` — skema, peran, operasional, dan kredensial uji terenkripsi
 - `lib/waktu.ts` — satu sumber tanggal WIB
 - `lib/gerbang.ts` — satu tempat pemeriksaan sesi dan hak akses

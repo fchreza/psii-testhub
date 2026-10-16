@@ -10,7 +10,9 @@ import { KelolaAksesProyek } from "@/components/kelola-akses-proyek";
 import { UbahTahapProyek } from "@/components/ubah-tahap-proyek";
 import { EditorMetadataProyek } from "@/components/editor-metadata-proyek";
 import { TombolHapusProyek } from "@/components/tombol-hapus-proyek";
+import { AkunUjiProyek } from "@/components/akun-uji-proyek";
 import { faseUntukProyek, labelJenisPengujian, type FasePengujian } from "@/lib/fase-proyek";
+import { bolehLihatAkunUji, bolehKelolaAkunUji } from "@/lib/aturan-peran";
 
 export const dynamic = "force-dynamic";
 
@@ -192,6 +194,9 @@ export default async function HalamanProyek({
               </div>
             ))}
           </dl>
+          {bolehLihatAkunUji(saya.peran) && (
+            <AkunUjiProyek projectId={id} bolehKelola={bolehKelolaAkunUji(saya.peran)} />
+          )}
         </section>
 
         {kelolaProyek && (

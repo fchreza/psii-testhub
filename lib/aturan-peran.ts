@@ -31,6 +31,16 @@ export function bolehKelolaProyek(peran: Peran): boolean {
   return PENGELOLA.includes(peran);
 }
 
+/** Akun uji terlihat bagi pengelola dan penguji; Pimpinan tidak menerima rahasia. */
+export function bolehLihatAkunUji(peran: Peran): boolean {
+  return peran === "ADMIN" || peran === "INTERNAL_PSII" || PERAN_PENGUJI.includes(peran);
+}
+
+/** Hanya Admin/Internal PSII yang boleh membuat, mengubah, atau menghapus akun uji. */
+export function bolehKelolaAkunUji(peran: Peran): boolean {
+  return PENGELOLA.includes(peran);
+}
+
 /** Admin, Internal PSII, dan penguji boleh menghapus bukti pada proyek yang dapat mereka akses. */
 export function bolehHapusBukti(peran: Peran): boolean {
   return PENGELOLA.includes(peran) || PERAN_PENGUJI.includes(peran);
