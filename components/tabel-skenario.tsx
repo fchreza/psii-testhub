@@ -318,10 +318,24 @@ export function TabelSkenario({
 
       {bolehKelolaSkenario && data.length > 0 && (
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <button type="button" onClick={() => tambah(modul[0]?.id ?? null)}
-            className="sentuh inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md border border-garis bg-kartu px-3.5 text-[14px] font-medium text-tinta-2 hover:border-garis-kuat sm:w-auto">
-            {data.some((x) => x.id.startsWith("draft:")) ? "Lanjutkan draf" : "Tambah skenario"}
-          </button>
+          <Button type="button" variant="primary" onClick={() => tambah(modul[0]?.id ?? null)}
+            className="sentuh w-full px-4 text-[14px] shadow-sm hover:bg-[#0b5ed7] disabled:hover:bg-aksi focus-visible:ring-aksi sm:w-auto">
+            {data.some((x) => x.id.startsWith("draft:")) ? (
+              <>
+                <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+                  <path d="M4 10h12m-5-5 5 5-5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+                </svg>
+                Lanjutkan draf
+              </>
+            ) : (
+              <>
+                <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+                  <path d="M10 3.75v12.5M3.75 10h12.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+                </svg>
+                Tambah skenario
+              </>
+            )}
+          </Button>
           <p className="text-[13px] text-tinta-3">
             {data.length} skenario {fase} · klik sel untuk mengubah, klik judul untuk membuka detail
           </p>
@@ -344,10 +358,13 @@ export function TabelSkenario({
             skrip <code className="rounded-sm bg-kanvas px-1">npm run impor</code>.
           </p>
           {bolehUbah && (
-            <button type="button" onClick={() => tambah(modul[0]?.id ?? null)}
-              className="sentuh mt-4 inline-flex items-center justify-center gap-2 rounded-md bg-aksi px-4 text-[14px] font-medium text-white">
+            <Button type="button" variant="primary" onClick={() => tambah(modul[0]?.id ?? null)}
+              className="sentuh mt-4 px-4 text-[14px] shadow-sm hover:bg-[#0b5ed7] disabled:hover:bg-aksi focus-visible:ring-aksi">
+              <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+                <path d="M10 3.75v12.5M3.75 10h12.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+              </svg>
               Tambah skenario
-            </button>
+            </Button>
           )}
         </div>
       ) : (
