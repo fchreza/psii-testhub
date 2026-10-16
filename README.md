@@ -56,6 +56,10 @@ npm run build
 npm run rekonsiliasi-bukti     # retry upload/delete tertunda; jalankan terjadwal secara manual oleh operator
 ```
 
+## Dukungan peramban
+
+Tailwind CSS v4 memakai fitur CSS modern dan mensyaratkan Chrome 111+, Safari 16.4+, atau Firefox 128+. Peramban yang lebih lama tidak didukung oleh stylesheet aplikasi.
+
 Pemulihan sandi mandiri memerlukan `APP_URL`, `RESEND_API_KEY`, dan `RESEND_FROM`
 di `.env.local`/environment deployment. `RESEND_FROM` harus memakai alamat pada
 domain yang sudah diverifikasi di Resend; `APP_URL` production harus HTTPS. Tanpa

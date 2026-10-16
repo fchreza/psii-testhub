@@ -1,6 +1,42 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@theme {
+  --color-kanvas: #f7f8fa;
+  --color-kartu: #ffffff;
+  --color-garis: #e4e7ec;
+  --color-garis-kuat: #98a2b3;
+  --color-tinta: #101828;
+  --color-tinta-2: #475467;
+  --color-tinta-3: #667085;
+  --color-aksi: #1570ef;
+  --color-aksi-lembut: #eff8ff;
+  --color-lulus: #067647;
+  --color-lulus-lembut: #ecfdf3;
+  --color-gagal: #b42318;
+  --color-gagal-lembut: #fef3f2;
+  --color-tertunda: #b54708;
+  --color-tertunda-lembut: #fffaeb;
+
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
 
 /*
  * Sedikit aturan dasar.

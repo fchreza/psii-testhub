@@ -241,12 +241,12 @@ export function BuktiSkenario({
       {muat ? (
         <p role="status" className="inline-flex items-center gap-2 text-[13px] text-tinta-3"><Spinner className="h-4 w-4" />Memuat bukti…</p>
       ) : galat && daftar.length === 0 ? (
-        <div className="rounded border border-dashed border-garis px-3 py-4 text-center">
+        <div className="rounded-sm border border-dashed border-garis px-3 py-4 text-center">
           <p className="text-[13px] text-tinta-3">Daftar bukti belum bisa ditampilkan.</p>
           <Button type="button" onClick={() => void ambil()} busy={muat} className="mt-2 min-h-8 px-3 py-1 text-[12.5px]">Coba lagi</Button>
         </div>
       ) : daftar.length === 0 ? (
-        <p className="rounded border border-dashed border-garis px-3 py-4 text-center text-[13px] text-tinta-3">
+        <p className="rounded-sm border border-dashed border-garis px-3 py-4 text-center text-[13px] text-tinta-3">
           Belum ada bukti
         </p>
       ) : (
@@ -256,16 +256,16 @@ export function BuktiSkenario({
               {gambar.map((b) => (
                 <li key={b.id} className="group relative">
                   <button type="button" onClick={() => setPerbesar(b)}
-                    className="block w-full overflow-hidden rounded border border-garis"
+                    className="block w-full overflow-hidden rounded-sm border border-garis"
                     aria-label={`Perbesar ${b.nama_asli ?? "bukti"}`}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={b.url} alt={b.nama_asli ?? "Bukti pengujian"}
-                      loading="lazy" className="aspect-[4/3] w-full object-cover" />
+                      loading="lazy" className="aspect-4/3 w-full object-cover" />
                   </button>
                   {bolehHapus && (
                     <Button type="button" variant="danger-quiet" onClick={() => { setGalat(null); setKonfirmasiHapus(b); }} disabled={!!sibuk} busy={sibuk === b.id}
                       aria-label={`Hapus ${b.nama_asli ?? "bukti"}`}
-                      className="absolute right-1 top-1 min-h-7 rounded-md bg-kartu/95 px-2 py-1 text-[11px] font-medium opacity-0 shadow-sm transition-opacity focus:opacity-100 group-hover:opacity-100">
+                      className="absolute right-1 top-1 min-h-7 rounded-md bg-kartu/95 px-2 py-1 text-[11px] font-medium opacity-0 shadow-xs transition-opacity focus:opacity-100 group-hover:opacity-100">
                       {sibuk === b.id ? "Menghapus…" : "Hapus"}
                     </Button>
                   )}
@@ -277,7 +277,7 @@ export function BuktiSkenario({
           {lain.length > 0 && (
             <ul className="mt-2 space-y-1">
               {lain.map((b) => (
-                <li key={b.id} className="flex items-center justify-between gap-2 rounded border border-garis px-2.5 py-1.5">
+                <li key={b.id} className="flex items-center justify-between gap-2 rounded-sm border border-garis px-2.5 py-1.5">
                   <a href={b.urlUnduh} className="min-w-0 flex-1 truncate text-[13px] text-aksi hover:underline">
                     {b.nama_asli ?? "berkas"}
                   </a>
@@ -299,14 +299,14 @@ export function BuktiSkenario({
       )}
 
       {konfirmasiHapus && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-4">
           <button type="button" aria-label="Tutup konfirmasi hapus bukti" disabled={!!sibuk}
             onClick={() => { setKonfirmasiHapus(null); setGalat(null); setAlasanHapus(""); }}
             className="absolute inset-0 bg-tinta/45 disabled:cursor-wait" />
             <section ref={hapusDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="judul-hapus-bukti"
             className="relative z-10 w-full max-w-lg rounded-xl border border-garis bg-kartu p-5 shadow-2xl sm:p-6">
             <h2 id="judul-hapus-bukti" className="text-lg font-bold text-tinta">Hapus bukti?</h2>
-            <p className="mt-2 break-words text-[13.5px] leading-relaxed text-tinta-2">
+            <p className="mt-2 wrap-break-word text-[13.5px] leading-relaxed text-tinta-2">
               Bukti <strong>{konfirmasiHapus.nama_asli ?? "berkas"}</strong> akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.
             </p>
             <label htmlFor="alasan-hapus-bukti" className="mt-4 block text-[13px] font-medium text-tinta">
@@ -314,7 +314,7 @@ export function BuktiSkenario({
             </label>
             <textarea id="alasan-hapus-bukti" value={alasanHapus} maxLength={1000}
               onChange={(e) => setAlasanHapus(e.target.value)} rows={3}
-              className="mt-1.5 w-full resize-y rounded-lg border border-garis-kuat bg-kartu px-3 py-2 text-[13.5px] text-tinta outline-none focus:border-aksi focus-visible:ring-4 focus-visible:ring-aksi-lembut"
+              className="mt-1.5 w-full resize-y rounded-lg border border-garis-kuat bg-kartu px-3 py-2 text-[13.5px] text-tinta outline-hidden focus:border-aksi focus-visible:ring-4 focus-visible:ring-aksi-lembut"
               placeholder="Jelaskan alasan atau tindak lanjut…" />
             {galat && <Feedback kind="error" className="mt-3">{galat}</Feedback>}
             <div className="mt-5 flex justify-end gap-2">
@@ -337,11 +337,11 @@ export function BuktiSkenario({
             <p className="truncate text-[13px] text-white/90">{perbesar.nama_asli}</p>
             <div className="flex shrink-0 gap-2">
               <a href={perbesar.urlUnduh} onClick={(e) => e.stopPropagation()}
-                className="rounded bg-white/15 px-2.5 py-1 text-[13px] text-white hover:bg-white/25">
+                className="rounded-sm bg-white/15 px-2.5 py-1 text-[13px] text-white hover:bg-white/25">
                 Unduh
               </a>
               <button type="button" onClick={() => setPerbesar(null)}
-                className="rounded bg-white/15 px-2.5 py-1 text-[13px] text-white hover:bg-white/25">
+                className="rounded-sm bg-white/15 px-2.5 py-1 text-[13px] text-white hover:bg-white/25">
                 Tutup
               </button>
             </div>
@@ -352,7 +352,7 @@ export function BuktiSkenario({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={perbesar.url} alt={perbesar.nama_asli ?? "Bukti"}
               onClick={(e) => e.stopPropagation()}
-              className="max-h-full max-w-full rounded object-contain" />
+              className="max-h-full max-w-full rounded-sm object-contain" />
           </div>
           <p className="mt-2 shrink-0 text-center text-[12px] text-white/60">
             Klik di luar gambar atau tekan Escape untuk menutup

@@ -43,7 +43,7 @@ function FormMasuk() {
 
   return (
     <main id="konten-utama" tabIndex={-1} className="flex min-h-screen items-center justify-center px-6">
-      <div className="w-full max-w-[26rem]">
+      <div className="w-full max-w-104">
         <div className="rounded-xl border border-garis bg-kartu p-7">
           <h1 className="text-[22px] font-bold tracking-tight text-tinta">PSII TestHub</h1>
           <p className="mt-1 text-[14px] leading-relaxed text-tinta-2">
@@ -55,7 +55,7 @@ function FormMasuk() {
               <label htmlFor="email" className="mb-1.5 block text-[14px] font-medium text-tinta">Email</label>
               <input id="email" type="email" autoComplete="email" required
                 value={email} onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-md border border-garis-kuat px-3 py-2.5 text-[16px] text-tinta outline-none focus:border-aksi" />
+                className="w-full rounded-md border border-garis-kuat px-3 py-2.5 text-[16px] text-tinta outline-hidden focus:border-aksi" />
             </div>
             <div>
               <div className="mb-1.5 flex items-center justify-between gap-3">
@@ -64,7 +64,7 @@ function FormMasuk() {
               </div>
               <input id="sandi" type="password" autoComplete="current-password" required
                 value={sandi} onChange={(e) => setSandi(e.target.value)}
-                className="w-full rounded-md border border-garis-kuat px-3 py-2.5 text-[16px] text-tinta outline-none focus:border-aksi" />
+                className="w-full rounded-md border border-garis-kuat px-3 py-2.5 text-[16px] text-tinta outline-hidden focus:border-aksi" />
             </div>
 
             {galat && (

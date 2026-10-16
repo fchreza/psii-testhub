@@ -10,8 +10,8 @@ export default function Loading() {
         </div>
         <span className="sr-only">Harap tunggu, konten sedang dimuat.</span>
         <div className="mb-6 space-y-2" aria-hidden="true">
-          <div className="h-8 w-64 rounded bg-garis motion-safe:animate-pulse motion-reduce:animate-none" />
-          <div className="h-4 w-96 max-w-full rounded bg-garis motion-safe:animate-pulse motion-reduce:animate-none" />
+          <div className="h-8 w-64 rounded-sm bg-garis motion-safe:animate-pulse motion-reduce:animate-none" />
+          <div className="h-4 w-96 max-w-full rounded-sm bg-garis motion-safe:animate-pulse motion-reduce:animate-none" />
         </div>
         <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6" aria-hidden="true">
           {Array.from({ length: 6 }, (_, i) => (

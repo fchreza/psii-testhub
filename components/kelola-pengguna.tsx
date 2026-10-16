@@ -120,7 +120,7 @@ export function KelolaPengguna({
   return (
     <>
       {bolehKelola && (
-        <section className="mb-6 rounded-xl border border-garis bg-kartu p-4 shadow-sm shadow-tinta/[0.03] sm:p-5">
+        <section className="mb-6 rounded-xl border border-garis bg-kartu p-4 shadow-xs shadow-tinta/3 sm:p-5">
           <div className="mb-4">
             <h2 className="text-[16px] font-semibold text-tinta">Daftarkan akun</h2>
             <p className="mt-1 text-[13px] text-tinta-3">Sandi awal dibuat otomatis dan hanya ditampilkan satu kali.</p>
@@ -129,22 +129,22 @@ export function KelolaPengguna({
             <div>
               <label htmlFor="u-nama" className="mb-1 block text-[13px] font-medium text-tinta-2">Nama</label>
               <input id="u-nama" required maxLength={120} value={nama} onChange={(e) => setNama(e.target.value)}
-                className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2 text-[15px] outline-none focus:border-aksi" />
+                className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2 text-[15px] outline-hidden focus:border-aksi" />
             </div>
             <div>
               <label htmlFor="u-email" className="mb-1 block text-[13px] font-medium text-tinta-2">Email</label>
               <input id="u-email" type="email" autoComplete="email" required maxLength={160} value={email} onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2 text-[15px] outline-none focus:border-aksi" />
+                className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2 text-[15px] outline-hidden focus:border-aksi" />
             </div>
             <div>
               <label htmlFor="u-jabatan" className="mb-1 block text-[13px] font-medium text-tinta-2">Jabatan</label>
               <input id="u-jabatan" maxLength={80} value={jabatan} onChange={(e) => setJabatan(e.target.value)}
-                className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2 text-[15px] outline-none focus:border-aksi" />
+                className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2 text-[15px] outline-hidden focus:border-aksi" />
             </div>
             <div>
               <label htmlFor="u-peran" className="mb-1 block text-[13px] font-medium text-tinta-2">Peran</label>
               <select id="u-peran" value={peran} onChange={(e) => setPeran(e.target.value)}
-                className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2 text-[14px] outline-none focus:border-aksi">
+                className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2 text-[14px] outline-hidden focus:border-aksi">
                 {PERAN.map((x) => <option key={x} value={x}>{x.replaceAll("_", " ")}</option>)}
               </select>
             </div>
@@ -171,7 +171,7 @@ export function KelolaPengguna({
       {pesanInfo && <p role="status" aria-live="polite" className="mb-3 rounded-lg border border-lulus/30 bg-lulus-lembut px-3 py-2 text-[13px] text-lulus">{pesanInfo}</p>}
 
       {galat && !bolehKelola && <p role="alert" className="mb-3 rounded-lg border border-gagal bg-gagal-lembut px-3 py-2 text-[13.5px] text-gagal">{galat}</p>}
-      <div className="overflow-x-auto rounded-xl border border-garis bg-kartu shadow-sm shadow-tinta/[0.03]">
+      <div className="overflow-x-auto rounded-xl border border-garis bg-kartu shadow-xs shadow-tinta/3">
         <table className="w-full min-w-[760px] border-collapse text-[13.5px]">
           <thead><tr className="border-b border-garis bg-kanvas text-left">
             <th scope="col" className="px-4 py-3 text-[11.5px] font-semibold uppercase tracking-wide text-tinta-3">Nama</th>
@@ -228,19 +228,19 @@ export function KelolaPengguna({
                 <label htmlFor="edit-pengguna-nama" className="mb-1 block text-[13px] font-medium text-tinta-2">Nama</label>
                 <input id="edit-pengguna-nama" autoFocus required maxLength={120} value={draftEdit.nama}
                   onChange={(e) => setDraftEdit((d) => ({ ...d, nama: e.target.value }))}
-                  className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2.5 text-[14px] outline-none focus:border-aksi" />
+                  className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2.5 text-[14px] outline-hidden focus:border-aksi" />
               </div>
               <div>
                 <label htmlFor="edit-pengguna-email" className="mb-1 block text-[13px] font-medium text-tinta-2">Email</label>
                 <input id="edit-pengguna-email" type="email" autoComplete="email" required maxLength={160} value={draftEdit.email}
                   onChange={(e) => setDraftEdit((d) => ({ ...d, email: e.target.value }))}
-                  className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2.5 text-[14px] outline-none focus:border-aksi" />
+                  className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2.5 text-[14px] outline-hidden focus:border-aksi" />
               </div>
               <div>
                 <label htmlFor="edit-pengguna-jabatan" className="mb-1 block text-[13px] font-medium text-tinta-2">Jabatan</label>
                 <input id="edit-pengguna-jabatan" maxLength={80} value={draftEdit.jabatan}
                   onChange={(e) => setDraftEdit((d) => ({ ...d, jabatan: e.target.value }))}
-                  className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2.5 text-[14px] outline-none focus:border-aksi" />
+                  className="w-full rounded-lg border border-garis-kuat bg-white px-3 py-2.5 text-[14px] outline-hidden focus:border-aksi" />
               </div>
               {galat && <p role="alert" className="rounded-md border border-gagal bg-gagal-lembut px-3 py-2 text-[13px] text-gagal">{galat}</p>}
               <div className="flex justify-end gap-2 pt-2">

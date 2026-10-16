@@ -158,14 +158,14 @@ export default async function HalamanProyek({
               }} pic={pic} />
               {saya.peran === "ADMIN" && <TombolHapusProyek projectId={id} nama={p.nama} />}
             </div> : (
-              <span className="rounded bg-kanvas px-2.5 py-1 text-[13px] font-medium text-tinta-2">
+              <span className="rounded-sm bg-kanvas px-2.5 py-1 text-[13px] font-medium text-tinta-2">
                 {LABEL_TAHAP[p.tahap] ?? p.tahap}
               </span>
             )}
           </div>
         </header>
 
-        <section aria-labelledby="informasi-proyek" className="mb-5 overflow-hidden rounded-xl border border-garis bg-kartu shadow-sm shadow-tinta/[0.03]">
+        <section aria-labelledby="informasi-proyek" className="mb-5 overflow-hidden rounded-xl border border-garis bg-kartu shadow-xs shadow-tinta/3">
           <div className="border-b border-garis px-4 py-3 sm:px-5">
             <h2 id="informasi-proyek" className="text-[14px] font-semibold text-tinta">Informasi proyek</h2>
           </div>
@@ -184,7 +184,7 @@ export default async function HalamanProyek({
             ] as [string, unknown][]).map(([label, nilai]) => (
               <div key={label} className="min-w-0 bg-kartu px-4 py-3.5 sm:px-5">
                 <dt className="text-[12px] font-medium text-tinta-3">{label}</dt>
-                <dd className="mt-1 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-tinta">
+                <dd className="mt-1 whitespace-pre-wrap wrap-break-word text-[14px] leading-relaxed text-tinta">
                   {nilai === null || nilai === undefined || nilai === "" ? <span className="text-tinta-3">—</span> : String(nilai)}
                 </dd>
               </div>
