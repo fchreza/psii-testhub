@@ -2,11 +2,14 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { klienMentah } from "@/db";
 import {
-  wajibMasukApi, bolehAksesProyek, bolehKelolaSkenario, bolehUbahEksekusi, bolehUbahKolomSkenario,
+  wajibMasukApi, bolehAksesProyek, bolehKelolaSkenario, bolehUbahEksekusi,
+  bolehUbahKolomSkenario, bolehLewatiGuardHapusSkenario,
 } from "@/lib/gerbang";
 import { faseUntukProyek, type FasePengujian } from "@/lib/fase-proyek";
-import { versiMasihAktual } from "@/lib/validasi-bukti";
-import { sebabBlokirHapusSkenario } from "@/lib/keamanan-hapus-skenario";
+import { perluAlasanHapusBuktiTerakhir, versiMasihAktual } from "@/lib/validasi-bukti";
+import { sebabBlokirHapusSkenario, sebabTundaHapusAdmin, pathKunciHapusSkenario } from "@/lib/keamanan-hapus-skenario";
+import { finalisasiIntentUpload } from "@/lib/bukti-operasi";
+import { hapusObjek } from "@/lib/simpanan";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +34,7 @@ export async function POST(req: Request) {
       kode?: string; fase?: string; judul?: string; moduleId?: string | null;
       langkahPengujian?: string; hasilDiharapkan?: string;
       hasilAktual?: string; pengujiId?: string | null; status?: string; catatanTindakLanjut?: string;
-      diubahPada?: string; versi?: string; siapRetest?: boolean; urutan?: number } | null;
+      diubahPada?: string; versi?: string; siapRetest?: boolean; urutan?: number; alasan?: string } | null;
 
   if (!isi?.aksi) return NextResponse.json({ pesan: "aksi wajib" }, { status: 400 });
   if (!isi.projectId || !/^PRJ-\d{3,}$/.test(isi.projectId)) {
@@ -298,8 +301,12 @@ export async function POST(req: Request) {
         const [updated] = (await tx.unsafe(
           `UPDATE th_scenarios SET ${kolom.join(", ")}
            WHERE id = $1::uuid AND project_id = $2 AND xmin::text = $${kolom.length + 3}
+             AND NOT EXISTS (
+               SELECT 1 FROM th_evidence e WHERE e.scenario_id = th_scenarios.id
+                 AND e.path = $${kolom.length + 4} AND e.status = 'DELETE_PENDING'
+             )
            RETURNING xmin::text AS versi, diubah_pada`,
-          [scenarioId, projectId, ...nilai, versi],
+          [scenarioId, projectId, ...nilai, versi, pathKunciHapusSkenario(scenarioId)],
         )) as unknown as { versi: string; diubah_pada: string }[];
         if (!updated) return [];
 
@@ -317,6 +324,13 @@ export async function POST(req: Request) {
       })) as unknown as { versi: string; diubah_pada: string }[];
 
       if (!baru) {
+        const [penghapusan] = (await klienMentah.unsafe(
+          `SELECT 1 AS ada FROM th_evidence WHERE scenario_id = $1::uuid AND path = $2 AND status = 'DELETE_PENDING' LIMIT 1`,
+          [scenarioId, pathKunciHapusSkenario(scenarioId)],
+        )) as unknown as { ada: number }[];
+        if (penghapusan) {
+          return NextResponse.json({ pesan: "Skenario sedang dibersihkan Admin; perubahan sementara ditutup.", konflik: true }, { status: 409 });
+        }
         const [terbaru] = (await klienMentah.unsafe(
           `SELECT s.id, s.project_id, s.kode, s.fase, s.judul, s.langkah_pengujian, s.hasil_diharapkan, s.hasil_aktual,
                   s.penguji_id, u.nama AS penguji_nama, s.module_id, s.siap_retest, s.status,
@@ -342,52 +356,238 @@ export async function POST(req: Request) {
       if (!isi.versi || typeof isi.versi !== "string") {
         return NextResponse.json({ pesan: "Versi data skenario wajib disertakan sebelum penghapusan." }, { status: 400 });
       }
+      if (isi.alasan !== undefined && (typeof isi.alasan !== "string" || isi.alasan.length > 1000)) {
+        return NextResponse.json({ pesan: "Alasan penghapusan maksimal 1.000 karakter." }, { status: 400 });
+      }
+      const alasan = typeof isi.alasan === "string" ? isi.alasan.trim() : "";
+      const [target] = (await klienMentah.unsafe(
+        `SELECT id, xmin::text AS versi FROM th_scenarios WHERE id = $1::uuid AND project_id = $2`,
+        [scenarioId, projectId],
+      )) as unknown as { id: string; versi: string }[];
+      if (!target) return NextResponse.json({ pesan: "Skenario tidak ditemukan di proyek ini." }, { status: 404 });
+      if (!versiMasihAktual(isi.versi, target.versi)) {
+        return NextResponse.json({ pesan: "Skenario berubah sejak dibuka. Muat ulang lalu pastikan lagi sebelum menghapus.", konflik: true }, { status: 409 });
+      }
 
-      /*
-       * Hapus permanen hanya bila tidak ada bukti/tombstone maupun intent
-       * unggahan. Audit disimpan dalam transaksi yang sama; FK unggahan/bukti
-       * tidak boleh menghapus metadata atau objek yang masih perlu direkonsiliasi.
-       */
-      const hasilHapus = await klienMentah.begin(async (tx) => {
+      // Rekonsiliasi intent yang URL-nya sudah pasti kedaluwarsa. Jika objek
+      // ternyata sudah terunggah, ia dicatat lebih dulu agar ikut dibersihkan.
+      if (bolehLewatiGuardHapusSkenario(saya.peran)) {
+        const kedaluwarsa = (await klienMentah.unsafe(
+          `SELECT id FROM th_evidence_uploads
+           WHERE scenario_id = $1::uuid AND status = 'UPLOADING'
+             AND expires_at <= now() - interval '30 seconds'
+           ORDER BY expires_at, id`, [scenarioId],
+        )) as unknown as { id: string }[];
+        for (const intent of kedaluwarsa) await finalisasiIntentUpload(intent.id);
+      }
+
+      const pathKunci = pathKunciHapusSkenario(scenarioId);
+      const hasilPersiapan = await klienMentah.begin(async (tx) => {
         const [ada] = (await tx.unsafe(
-          `SELECT id, kode, judul, xmin::text AS versi FROM th_scenarios
+          `SELECT id, kode, judul, status, catatan_tindak_lanjut, xmin::text AS versi FROM th_scenarios
            WHERE id = $1::uuid AND project_id = $2 FOR UPDATE`,
           [scenarioId, projectId],
-        )) as unknown as { id: string; kode: string; judul: string; versi: string }[];
+        )) as unknown as { id: string; kode: string; judul: string; status: string; catatan_tindak_lanjut: string | null; versi: string }[];
         if (!ada) return { status: "missing" as const };
         if (!versiMasihAktual(isi.versi, ada.versi)) return { status: "conflict" as const };
 
-        const [bukti] = (await tx.unsafe(
-          `SELECT count(*)::int AS n FROM th_evidence WHERE scenario_id = $1::uuid`, [scenarioId],
-        )) as unknown as { n: number }[];
-        const [unggahan] = (await tx.unsafe(
-          `SELECT count(*)::int AS n FROM th_evidence_uploads WHERE scenario_id = $1::uuid`, [scenarioId],
-        )) as unknown as { n: number }[];
-        const sebab = sebabBlokirHapusSkenario(Number(bukti.n), Number(unggahan.n));
-        if (sebab) return {
-          status: "blocked" as const, sebab,
-          jumlahBukti: Number(bukti.n), jumlahUnggahan: Number(unggahan.n),
-        };
+        const bukti = (await tx.unsafe(
+          `SELECT id, path, nama_asli, status FROM th_evidence
+           WHERE scenario_id = $1::uuid ORDER BY diunggah_pada, id FOR UPDATE`, [scenarioId],
+        )) as unknown as { id: string; path: string; nama_asli: string | null; status: string }[];
+        const unggahan = (await tx.unsafe(
+          `SELECT id, staging_path, final_path, status, expires_at FROM th_evidence_uploads
+           WHERE scenario_id = $1::uuid ORDER BY dibuat_pada, id FOR UPDATE`, [scenarioId],
+        )) as unknown as {
+          id: string; staging_path: string; final_path: string; status: string; expires_at: Date | string;
+        }[];
+        const buktiPengguna = bukti.filter((item) => item.path !== pathKunci);
+        const markerAda = bukti.some((item) => item.path === pathKunci && item.status === "DELETE_PENDING");
 
+        if (!bolehLewatiGuardHapusSkenario(saya.peran)) {
+          if (markerAda) return { status: "admin_cleanup_pending" as const };
+          const sebab = sebabBlokirHapusSkenario(buktiPengguna.length, unggahan.length);
+          if (sebab) return {
+            status: "blocked" as const, sebab,
+            jumlahBukti: buktiPengguna.length, jumlahUnggahan: unggahan.length,
+          };
+
+          await tx.unsafe(
+            `INSERT INTO th_audit_logs (user_id, project_id, scenario_id, aksi, kolom, nilai_lama, nilai_baru)
+             VALUES ($1::uuid, $2, $3::uuid, 'hapus_skenario', 'judul', $4, $5)`,
+            [saya.id, projectId, scenarioId, `${ada.kode} — ${ada.judul}`, alasan || null],
+          );
+          await tx.unsafe(`DELETE FROM th_scenarios WHERE id = $1::uuid AND project_id = $2`, [scenarioId, projectId]);
+          return { status: "deleted" as const };
+        }
+
+        const sebabTunda = sebabTundaHapusAdmin(unggahan.map(({ status, expires_at }) => ({ status, expiresAt: expires_at })));
+        if (sebabTunda) {
+          const urlAktif = unggahan
+            .filter((item) => new Date(item.expires_at).getTime() > Date.now() - 30_000)
+            .sort((a, b) => new Date(a.expires_at).getTime() - new Date(b.expires_at).getTime())[0];
+          return {
+            status: "upload_pending" as const,
+            sebab: sebabTunda,
+            sampai: urlAktif ? new Date(urlAktif.expires_at).toISOString() : null,
+          };
+        }
+
+        const adaBuktiAktif = buktiPengguna.some((item) => item.status === "READY" || item.status === "DELETE_PENDING");
+        if (adaBuktiAktif && perluAlasanHapusBuktiTerakhir(ada.status, ada.catatan_tindak_lanjut, alasan)) {
+          return { status: "reason" as const };
+        }
+
+        let versiPersiapan = ada.versi;
+        if (adaBuktiAktif && alasan && !ada.catatan_tindak_lanjut?.trim()
+          && (ada.status === "FAIL" || ada.status === "BLOCKED")) {
+          const [catatan] = (await tx.unsafe(
+            `UPDATE th_scenarios SET catatan_tindak_lanjut = $2
+             WHERE id = $1::uuid RETURNING xmin::text AS versi`, [scenarioId, alasan],
+          )) as unknown as { versi: string }[];
+          versiPersiapan = catatan.versi;
+          await tx.unsafe(
+            `INSERT INTO th_audit_logs (user_id, project_id, scenario_id, aksi, kolom, nilai_baru)
+             VALUES ($1::uuid, $2, $3::uuid, 'ubah_catatan', 'catatan_tindak_lanjut', $4)`,
+            [saya.id, projectId, scenarioId, alasan],
+          );
+        }
+
+        for (const item of buktiPengguna.filter((b) => b.status === "READY")) {
+          await tx.unsafe(`UPDATE th_evidence SET status = 'DELETE_PENDING' WHERE id = $1::uuid AND status = 'READY'`, [item.id]);
+          await tx.unsafe(
+            `INSERT INTO th_audit_logs (user_id, project_id, scenario_id, aksi, kolom, nilai_lama, nilai_baru)
+             VALUES ($1::uuid, $2, $3::uuid, 'hapus_bukti', 'bukti', $4, $5)`,
+            [saya.id, projectId, scenarioId, item.nama_asli ?? item.path,
+             alasan || `Dihapus bersama skenario ${ada.kode} oleh Admin.`],
+          );
+        }
+
+        if (!markerAda) {
+          await tx.unsafe(
+            `INSERT INTO th_evidence (scenario_id, path, nama_asli, tipe, ukuran, diunggah_oleh, status)
+             VALUES ($1::uuid, $2, '__psii_internal__', 'application/x-psii-internal', 0, $3::uuid, 'DELETE_PENDING')`,
+            [scenarioId, pathKunci, saya.id],
+          );
+          const [terkunci] = (await tx.unsafe(
+            `UPDATE th_scenarios SET diubah_pada = now() WHERE id = $1::uuid AND project_id = $2
+             RETURNING xmin::text AS versi`, [scenarioId, projectId],
+          )) as unknown as { versi: string }[];
+          versiPersiapan = terkunci.versi;
+          await tx.unsafe(
+            `INSERT INTO th_audit_logs (user_id, project_id, scenario_id, aksi, kolom, nilai_lama, nilai_baru)
+             VALUES ($1::uuid, $2, $3::uuid, 'hapus_skenario', 'penghapusan', $4, 'Pembersihan Admin dimulai.')`,
+            [saya.id, projectId, scenarioId, `${ada.kode} — ${ada.judul}`],
+          );
+        }
+
+        const objek = [...new Set([
+          ...buktiPengguna.map((item) => item.path),
+          ...unggahan.flatMap((item) => [item.staging_path, item.final_path]),
+        ])];
+        return {
+          status: "prepared" as const,
+          versi: versiPersiapan,
+          kode: ada.kode,
+          judul: ada.judul,
+          objek,
+          unggahan: unggahan.map((item) => ({ id: item.id, staging_path: item.staging_path, final_path: item.final_path })),
+        };
+      });
+      if (hasilPersiapan.status === "missing") {
+        return NextResponse.json({ pesan: "Skenario tidak ditemukan di proyek ini." }, { status: 404 });
+      }
+      if (hasilPersiapan.status === "conflict") {
+        return NextResponse.json({ pesan: "Skenario berubah sejak dibuka. Muat ulang lalu pastikan lagi sebelum menghapus.", konflik: true }, { status: 409 });
+      }
+      if (hasilPersiapan.status === "admin_cleanup_pending") {
+        return NextResponse.json({ pesan: "Skenario sedang dibersihkan Admin; Internal PSII tidak dapat menghapusnya saat ini." }, { status: 409 });
+      }
+      if (hasilPersiapan.status === "blocked") {
+        const pesan = hasilPersiapan.sebab === "bukti"
+          ? `Skenario memiliki ${hasilPersiapan.jumlahBukti} rekam bukti. Internal PSII tidak dapat menghapusnya; minta Admin jika skenario harus dihapus.`
+          : `Skenario memiliki ${hasilPersiapan.jumlahUnggahan} riwayat unggahan. Internal PSII tidak dapat menghapusnya; minta Admin jika skenario harus dihapus.`;
+        return NextResponse.json({ pesan }, { status: 400 });
+      }
+      if (hasilPersiapan.status === "reason") {
+        return NextResponse.json({ pesan: "Bukti pada skenario Gagal/Tertunda tidak dapat dihapus tanpa alasan atau catatan tindak lanjut." }, { status: 400 });
+      }
+      if (hasilPersiapan.status === "upload_pending") {
+        const pesan = hasilPersiapan.sebab === "unggahan"
+          ? "Skenario memiliki unggahan yang masih diproses. Tunggu unggahan selesai atau berakhir, lalu coba lagi."
+          : `URL unggah masih dapat menulis ke storage. Coba lagi setelah ${hasilPersiapan.sampai ? new Date(hasilPersiapan.sampai).toLocaleString("id-ID") : "masa URL berakhir"}.`;
+        return NextResponse.json({ pesan }, { status: 409 });
+      }
+      if (hasilPersiapan.status === "deleted") {
+        revalidatePath(`/proyek/${projectId}`);
+        return NextResponse.json({ ok: true, auditDisimpan: true });
+      }
+
+      const berhasil = new Set<string>();
+      const gagal = new Set<string>();
+      for (const path of hasilPersiapan.objek) {
+        try {
+          await hapusObjek(path);
+          berhasil.add(path);
+        } catch (error) {
+          gagal.add(path);
+          console.error("[skenario] cleanup objek bukti tertunda", { scenarioId, path, error });
+        }
+      }
+
+      if (gagal.size) {
+        await klienMentah.begin(async (tx) => {
+          for (const path of berhasil) {
+            await tx.unsafe(
+              `UPDATE th_evidence SET status = 'DELETED', deleted_at = COALESCE(deleted_at, now())
+               WHERE scenario_id = $1::uuid AND path = $2 AND status <> 'DELETED'`, [scenarioId, path],
+            );
+          }
+          for (const item of hasilPersiapan.unggahan) {
+            if ([item.staging_path, item.final_path].some((path) => gagal.has(path))) {
+              await tx.unsafe(
+                `UPDATE th_evidence_uploads SET last_error = $2, diubah_pada = now() WHERE id = $1::uuid`,
+                [item.id, "Admin menghapus skenario; cleanup objek storage perlu dicoba ulang."],
+              );
+            }
+          }
+        });
+        revalidatePath(`/proyek/${projectId}`);
+        return NextResponse.json({
+          pesan: `Skenario belum dihapus karena ${gagal.size} objek bukti/unggahan belum berhasil dibersihkan. Audit dan tombstone tersimpan; coba lagi saat storage tersedia.`,
+          pending: true, versi: hasilPersiapan.versi,
+        }, { status: 503 });
+      }
+
+      const selesai = await klienMentah.begin(async (tx) => {
+        const [ada] = (await tx.unsafe(
+          `SELECT id, kode, judul, xmin::text AS versi FROM th_scenarios
+           WHERE id = $1::uuid AND project_id = $2 FOR UPDATE`, [scenarioId, projectId],
+        )) as unknown as { id: string; kode: string; judul: string; versi: string }[];
+        if (!ada) return { status: "missing" as const };
+        if (!versiMasihAktual(hasilPersiapan.versi, ada.versi)) return { status: "conflict" as const };
+        const [marker] = (await tx.unsafe(
+          `SELECT id FROM th_evidence WHERE scenario_id = $1::uuid AND path = $2 AND status = 'DELETE_PENDING' FOR UPDATE`,
+          [scenarioId, pathKunci],
+        )) as unknown as { id: string }[];
+        if (!marker) return { status: "marker_missing" as const };
         await tx.unsafe(
-          `INSERT INTO th_audit_logs (user_id, project_id, scenario_id, aksi, kolom, nilai_lama)
-           VALUES ($1::uuid, $2, $3::uuid, 'hapus_skenario', 'judul', $4)`,
-          [saya.id, projectId, scenarioId, `${ada.kode} — ${ada.judul}`],
+          `UPDATE th_evidence SET status = 'DELETED', deleted_at = COALESCE(deleted_at, now())
+           WHERE scenario_id = $1::uuid AND path <> $2 AND status <> 'DELETED'`, [scenarioId, pathKunci],
+        );
+        await tx.unsafe(
+          `INSERT INTO th_audit_logs (user_id, project_id, scenario_id, aksi, kolom, nilai_lama, nilai_baru)
+           VALUES ($1::uuid, $2, $3::uuid, 'hapus_skenario', 'judul', $4, $5)`,
+          [saya.id, projectId, scenarioId, `${ada.kode} — ${ada.judul}`, alasan || "Penghapusan Admin selesai."],
         );
         await tx.unsafe(`DELETE FROM th_scenarios WHERE id = $1::uuid AND project_id = $2`, [scenarioId, projectId]);
         return { status: "deleted" as const };
       });
-      if (hasilHapus.status === "missing") {
-        return NextResponse.json({ pesan: "Skenario tidak ditemukan di proyek ini." }, { status: 404 });
+      if (selesai.status === "conflict") {
+        return NextResponse.json({ pesan: "Skenario berubah selama pembersihan. Data bukti sudah ditombstone; muat ulang lalu minta Admin mencoba kembali.", konflik: true }, { status: 409 });
       }
-      if (hasilHapus.status === "conflict") {
-        return NextResponse.json({ pesan: "Skenario berubah sejak dibuka. Muat ulang lalu pastikan lagi sebelum menghapus.", konflik: true }, { status: 409 });
-      }
-      if (hasilHapus.status === "blocked") {
-        const pesan = hasilHapus.sebab === "bukti"
-          ? `Skenario memiliki ${hasilHapus.jumlahBukti} rekam bukti, termasuk tombstone bukti yang dihapus. Skenario tidak dihapus agar jejak bukti tetap utuh.`
-          : `Skenario memiliki ${hasilHapus.jumlahUnggahan} riwayat unggahan. Skenario tidak dihapus agar rekonsiliasi dan audit tetap utuh.`;
-        return NextResponse.json({ pesan }, { status: 400 });
+      if (selesai.status === "marker_missing") {
+        return NextResponse.json({ pesan: "Marker penghapusan tidak ditemukan. Skenario tidak dihapus; muat ulang dan coba lagi.", konflik: true }, { status: 409 });
       }
       revalidatePath(`/proyek/${projectId}`);
       return NextResponse.json({ ok: true, auditDisimpan: true });

@@ -2,6 +2,7 @@ import { klienMentah } from "@/db";
 import { finalisasiUpload } from "@/lib/alur-bukti";
 import { validasiMetadataObjek } from "@/lib/validasi-bukti";
 import { BATAS_BUKTI, hapusObjek, inspeksiObjek, promosikanObjek } from "@/lib/simpanan";
+import { PREFIX_KUNCI_HAPUS_SKENARIO } from "@/lib/keamanan-hapus-skenario";
 
 type IntentUpload = {
   id: string;
@@ -172,7 +173,10 @@ export async function rekonsiliasiBukti(batas = 100): Promise<{ selesai: number;
   }
 
   const penghapusan = (await klienMentah.unsafe(
-    `SELECT id, path FROM th_evidence WHERE status = 'DELETE_PENDING' ORDER BY diunggah_pada LIMIT $1`, [batas],
+    `SELECT id, path FROM th_evidence
+     WHERE status = 'DELETE_PENDING'
+       AND position($2 in path) <> 1
+     ORDER BY diunggah_pada LIMIT $1`, [batas, PREFIX_KUNCI_HAPUS_SKENARIO],
   )) as unknown as { id: string; path: string }[];
   for (const bukti of penghapusan) {
     try {

@@ -263,10 +263,12 @@ export function BuktiSkenario({
                       loading="lazy" className="aspect-4/3 w-full object-cover" />
                   </button>
                   {bolehHapus && (
-                    <Button type="button" variant="danger-quiet" onClick={() => { setGalat(null); setKonfirmasiHapus(b); }} disabled={!!sibuk} busy={sibuk === b.id}
+                    <Button type="button" variant="danger-quiet" onClick={() => { setGalat(null); setKonfirmasiHapus(b); }} disabled={!!sibuk}
                       aria-label={`Hapus ${b.nama_asli ?? "bukti"}`}
-                      className="absolute right-1 top-1 min-h-7 rounded-md bg-kartu/95 px-2 py-1 text-[11px] font-medium opacity-0 shadow-xs transition-opacity focus:opacity-100 group-hover:opacity-100">
-                      {sibuk === b.id ? "Menghapus…" : "Hapus"}
+                      title="Hapus bukti"
+                      aria-busy={sibuk === b.id || undefined}
+                      className="absolute right-1 top-1 z-10 h-8 min-h-8 w-8 rounded-full border border-white/80 bg-kartu/95 px-0 py-0 text-gagal shadow-md transition-transform hover:scale-105 hover:bg-gagal-lembut focus-visible:ring-4">
+                      {sibuk === b.id ? <Spinner className="h-4 w-4" /> : <IkonTutup />}
                     </Button>
                   )}
                 </li>
@@ -285,10 +287,12 @@ export function BuktiSkenario({
                     {b.ukuran ? `${Math.round(b.ukuran / 1024)} KB` : ""}
                   </span>
                   {bolehHapus && (
-                    <Button type="button" variant="danger-quiet" onClick={() => { setGalat(null); setKonfirmasiHapus(b); }} disabled={!!sibuk} busy={sibuk === b.id}
+                    <Button type="button" variant="danger-quiet" onClick={() => { setGalat(null); setKonfirmasiHapus(b); }} disabled={!!sibuk}
                       aria-label={`Hapus ${b.nama_asli ?? "berkas"}`}
-                      className="min-h-8 shrink-0 px-2 py-1 text-[12px] text-tinta-3 hover:text-gagal">
-                      {sibuk === b.id ? "Menghapus…" : "Hapus"}
+                      title="Hapus bukti"
+                      aria-busy={sibuk === b.id || undefined}
+                      className="h-8 min-h-8 w-8 shrink-0 rounded-full border border-garis px-0 py-0 text-gagal hover:bg-gagal-lembut focus-visible:ring-4">
+                      {sibuk === b.id ? <Spinner className="h-4 w-4" /> : <IkonTutup />}
                     </Button>
                   )}
                 </li>
@@ -360,5 +364,13 @@ export function BuktiSkenario({
         </div>
       )}
     </div>
+  );
+}
+
+function IkonTutup() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+      <path d="m5 5 10 10M15 5 5 15" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    </svg>
   );
 }

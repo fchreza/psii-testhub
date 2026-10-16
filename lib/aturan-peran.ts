@@ -31,6 +31,16 @@ export function bolehKelolaProyek(peran: Peran): boolean {
   return PENGELOLA.includes(peran);
 }
 
+/** Admin, Internal PSII, dan penguji boleh menghapus bukti pada proyek yang dapat mereka akses. */
+export function bolehHapusBukti(peran: Peran): boolean {
+  return PENGELOLA.includes(peran) || PERAN_PENGUJI.includes(peran);
+}
+
+/** Hanya Admin boleh melewati perlindungan riwayat saat menghapus skenario. */
+export function bolehLewatiGuardHapusSkenario(peran: Peran): boolean {
+  return peran === "ADMIN";
+}
+
 /** Semua selain Pimpinan dapat menjalankan dan mengisi pengujian. */
 export function bolehUbahEksekusi(peran: Peran): boolean {
   return peran !== "PIMPINAN";

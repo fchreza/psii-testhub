@@ -31,10 +31,12 @@ const STATUS_PILIHAN = ["PENDING","PASS","FAIL","BLOCKED"];
  * yang terjadi pada spreadsheet di kantor (10 dari 42 skenario tidak terisi).
  */
 export function TabelSkenario({
-  projectId, fase, skenarioAwal, modul, moduleIdDefault, orang, sayaId, bolehUbah, bolehKelolaSkenario, onDataMutasi, onDraftChange,
+  projectId, fase, skenarioAwal, modul, moduleIdDefault, orang, sayaId, bolehUbah, bolehKelolaSkenario,
+  bolehHapusBukti, bolehAdminHapusSkenario, onDataMutasi, onDraftChange,
 }: {
   projectId: string; fase: string; skenarioAwal: Skenario[];
   modul: Modul[]; moduleIdDefault: string | null; orang: Orang[]; sayaId: string; bolehUbah: boolean; bolehKelolaSkenario: boolean;
+  bolehHapusBukti: boolean; bolehAdminHapusSkenario: boolean;
   onDataMutasi?: () => void;
   onDraftChange?: (active: boolean) => void;
 }) {
@@ -49,6 +51,7 @@ export function TabelSkenario({
   const hapusAktif = useRef(new Set<string>());
   const [konfirmasiHapus, setKonfirmasiHapus] = useState<Skenario | null>(null);
   const [hapusGalat, setHapusGalat] = useState<string | null>(null);
+  const [alasanHapusSkenario, setAlasanHapusSkenario] = useState("");
   const [saring, setSaring] = useState({ status: "", penguji: "", cari: "" });
   // Skenario yang panelnya sedang terbuka. Disimpan sebagai ID, bukan objeknya:
   // objek yang disimpan akan basi begitu datanya diubah di tempat.
@@ -211,11 +214,15 @@ export function TabelSkenario({
     try {
       const r = await fetch("/api/v1/skenario", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ aksi: "hapus", projectId, scenarioId: s.id, versi: s.versi }),
+        body: JSON.stringify({ aksi: "hapus", projectId, scenarioId: s.id, versi: s.versi, alasan: alasanHapusSkenario }),
       });
       const j = await r.json().catch(() => ({ pesan: "Respons server tidak dapat dibaca." }));
       if (!r.ok) {
         const error = j.pesan ?? "Gagal menghapus skenario.";
+        if (j.pending === true && typeof j.versi === "string") {
+          setKonfirmasiHapus((sekarang) => sekarang ? { ...sekarang, versi: j.versi } : sekarang);
+          onDataMutasi?.();
+        }
         setHapusGalat(error); setPesan({ jenis: "galat", teks: error }); return;
       }
       perbaruiData((baris) => baris.filter((x) => x.id !== s.id));
@@ -224,6 +231,7 @@ export function TabelSkenario({
       setHapusGalat(null);
       setPesan({ jenis: "info", teks: "Skenario berhasil dihapus." });
       onDataMutasi?.();
+      setAlasanHapusSkenario("");
     } catch {
       const error = "Tidak dapat terhubung. Skenario belum dihapus.";
       setHapusGalat(error); setPesan({ jenis: "galat", teks: error });
@@ -483,7 +491,7 @@ export function TabelSkenario({
 
                           <td className="px-2 py-2 text-right">
                             {bolehKelolaSkenario && (
-                              <button type="button" onClick={() => { setHapusGalat(null); setKonfirmasiHapus(s); }} disabled={hapusSibuk.has(s.id)}
+                              <button type="button" onClick={() => { setHapusGalat(null); setAlasanHapusSkenario(""); setKonfirmasiHapus(s); }} disabled={hapusSibuk.has(s.id)}
                                 aria-label={s.id.startsWith("draft:") ? "Buang draf skenario" : `Hapus ${s.kode}`}
                                 title={s.id.startsWith("draft:") ? "Buang draf" : "Hapus skenario"}
                                 aria-busy={hapusSibuk.has(s.id)}
@@ -512,6 +520,7 @@ export function TabelSkenario({
           projectId={projectId}
           bolehUbah={bolehUbah}
           bolehKelolaSkenario={bolehKelolaSkenario}
+          bolehHapusBukti={bolehHapusBukti}
           isDraft={terpilih.id.startsWith("draft:")}
           onDataMutasi={onDataMutasi}
           onDraftChange={onDraftChange}
@@ -545,7 +554,7 @@ export function TabelSkenario({
       {konfirmasiHapus && (
         <div className="fixed inset-0 z-70 flex items-center justify-center p-4">
           <button type="button" aria-label="Tutup konfirmasi hapus" disabled={hapusSibuk.has(konfirmasiHapus.id)}
-            onClick={() => { setKonfirmasiHapus(null); setHapusGalat(null); }}
+            onClick={() => { setKonfirmasiHapus(null); setHapusGalat(null); setAlasanHapusSkenario(""); }}
             className="absolute inset-0 bg-tinta/45 disabled:cursor-wait" />
           <section ref={hapusDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="judul-konfirmasi-hapus-skenario"
             className="relative z-10 w-full max-w-lg rounded-xl border border-garis bg-kartu p-5 shadow-2xl sm:p-6">
@@ -555,12 +564,29 @@ export function TabelSkenario({
             <p className="mt-2 text-[13.5px] leading-relaxed text-tinta-2">
               {konfirmasiHapus.id.startsWith("draft:")
                 ? "Draf ini belum disimpan ke server. Buang draf dari layar ini?"
-                : <>Skenario <strong>{konfirmasiHapus.kode} — {konfirmasiHapus.judul}</strong> akan dihapus permanen dan tidak dapat dibatalkan. Riwayat audit tetap disimpan. Untuk menjaga integritas bukti, skenario dengan rekam bukti (termasuk bukti yang sudah dihapus) atau riwayat unggahan tidak dapat dihapus.</>}
+                : <>
+                    Skenario <strong>{konfirmasiHapus.kode} — {konfirmasiHapus.judul}</strong> akan dihapus permanen.
+                    {bolehAdminHapusSkenario
+                      ? " Bukti dan riwayat unggahan terkait juga akan dibersihkan; riwayat audit tetap disimpan. Penghapusan ditunda jika URL unggah masih aktif."
+                      : " Riwayat bukti/unggahan membuat penghapusan oleh Internal PSII ditolak; Admin dapat menghapusnya dengan pembersihan dan audit."}
+                  </>}
             </p>
+            {!konfirmasiHapus.id.startsWith("draft:") && bolehAdminHapusSkenario &&
+              (konfirmasiHapus.status === "FAIL" || konfirmasiHapus.status === "BLOCKED") && (
+                <div className="mt-4">
+                  <label htmlFor="alasan-hapus-skenario" className="block text-[13px] font-medium text-tinta">
+                    Alasan / tindak lanjut <span className="font-normal text-tinta-3">(wajib bila ada bukti aktif dan catatan tindak lanjut kosong)</span>
+                  </label>
+                  <Textarea id="alasan-hapus-skenario" value={alasanHapusSkenario} maxLength={1000} rows={3}
+                    onChange={(e) => setAlasanHapusSkenario(e.target.value)}
+                    placeholder="Catat alasan sebelum menghapus bukti skenario ini…"
+                    className="mt-1.5 min-h-20 text-[13.5px]" />
+                </div>
+              )}
             {hapusGalat && <Feedback kind="error" className="mt-3">{hapusGalat}</Feedback>}
             <div className="mt-5 flex justify-end gap-2">
               <Button type="button" autoFocus disabled={hapusSibuk.has(konfirmasiHapus.id)}
-                onClick={() => { setKonfirmasiHapus(null); setHapusGalat(null); }}
+                onClick={() => { setKonfirmasiHapus(null); setHapusGalat(null); setAlasanHapusSkenario(""); }}
                 className="text-[13px]">Batal</Button>
               <Button type="button" variant="danger" busy={hapusSibuk.has(konfirmasiHapus.id)}
                 onClick={() => void hapus(konfirmasiHapus)}
