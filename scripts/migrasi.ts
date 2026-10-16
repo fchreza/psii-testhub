@@ -9,6 +9,7 @@ const URUTAN_MIGRASI = [
   "db/migrasi-003-pemulihan-sandi.sql",
   "db/migrasi-004-jenis-pengujian.sql",
   "db/migrasi-005-ketahanan-operasional.sql",
+  "db/migrasi-006-akun-uji.sql",
 ] as const;
 
 function usage(): never {
@@ -16,6 +17,7 @@ function usage(): never {
     "Pilih migration secara eksplisit; tidak ada daftar default.",
     "Contoh: npm run migrasi -- db/migrasi-005-ketahanan-operasional.sql",
     "Migration 004 memerlukan flag --setuju-migrasi-004 setelah ditinjau.",
+    "Migration 006 memerlukan flag --setuju-migrasi-006 setelah SQL kredensial ditinjau.",
     "Production memerlukan flag --setujui-produksi setelah persetujuan pemilik.",
     `File yang diizinkan: ${URUTAN_MIGRASI.join(", ")}`,
   ].join("\n"));
@@ -52,12 +54,15 @@ async function main() {
   const fileArgs = args.filter((x) => !x.startsWith("--"));
   const flags = new Set(args.filter((x) => x.startsWith("--")));
   if (!fileArgs.length) usage();
-  if (args.some((x) => x.startsWith("--") && !["--setuju-migrasi-004", "--setujui-produksi"].includes(x))) usage();
+  if (args.some((x) => x.startsWith("--") && !["--setuju-migrasi-004", "--setuju-migrasi-006", "--setujui-produksi"].includes(x))) usage();
   if (new Set(fileArgs).size !== fileArgs.length || fileArgs.some((x) => !URUTAN_MIGRASI.includes(x as typeof URUTAN_MIGRASI[number]))) usage();
   const posisi = fileArgs.map((x) => URUTAN_MIGRASI.indexOf(x as typeof URUTAN_MIGRASI[number]));
   if (posisi.some((x, i) => i > 0 && x <= posisi[i - 1])) usage();
   if (fileArgs.includes("db/migrasi-004-jenis-pengujian.sql") && !flags.has("--setuju-migrasi-004")) {
     throw new Error("Migrasi 004 membutuhkan flag --setuju-migrasi-004 setelah SQL ditinjau dan disetujui.");
+  }
+  if (fileArgs.includes("db/migrasi-006-akun-uji.sql") && !flags.has("--setuju-migrasi-006")) {
+    throw new Error("Migrasi 006 membutuhkan flag --setuju-migrasi-006 setelah SQL ditinjau dan disetujui.");
   }
   if (process.env.NODE_ENV === "production" && !flags.has("--setujui-produksi")) {
     throw new Error("NODE_ENV=production: hentikan. Persetujuan produksi harus diberikan secara eksplisit lewat --setujui-produksi.");

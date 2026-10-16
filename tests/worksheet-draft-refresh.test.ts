@@ -4,6 +4,7 @@ import {
   daftarSamaReferensi,
   tundaRefreshJikaDrafAktif,
   ambilRefreshTertundaJikaAman,
+  jalankanRefreshJikaAman,
 } from "../lib/lembar-skenario-state";
 
 test("array filter baru dengan baris yang sama tidak dianggap snapshot baru dan tidak membuang draft lokal", () => {
@@ -32,12 +33,28 @@ test("refresh yang tertunda memakai flag draft terkini dan tersedia segera setel
   assert.equal(ambilRefreshTertundaJikaAman(drafAktif, refreshTertunda), false);
 });
 
-test("pascasimpan, refresh otomatis dapat berjalan walau timeout berasal dari render saat draft aktif", () => {
+test("mutasi memulai refresh segera saat tidak ada draf aktif", () => {
+  const drafAktif = { current: false };
+  const refreshTertunda = { current: false };
+  let jumlahRefresh = 0;
+
+  assert.equal(jalankanRefreshJikaAman(drafAktif, refreshTertunda, () => { jumlahRefresh += 1; }), true);
+  assert.equal(jumlahRefresh, 1, "refresh dipicu langsung, bukan menunggu timer");
+  assert.equal(refreshTertunda.current, false);
+});
+
+test("mutasi saat detail masih memiliki draf mengantrekan refresh sampai aman", () => {
   const drafAktif = { current: true };
   const refreshTertunda = { current: false };
+  let jumlahRefresh = 0;
 
-  // Save berhasil dan callback onDraftChange(false) memperbarui ref sinkron.
+  assert.equal(jalankanRefreshJikaAman(drafAktif, refreshTertunda, () => { jumlahRefresh += 1; }), false);
+  assert.equal(jumlahRefresh, 0, "refresh tidak boleh menimpa detail yang belum disimpan");
+  assert.equal(refreshTertunda.current, true);
+
   drafAktif.current = false;
-  assert.equal(tundaRefreshJikaDrafAktif(drafAktif, refreshTertunda), false);
+  assert.equal(ambilRefreshTertundaJikaAman(drafAktif, refreshTertunda), true);
+  jumlahRefresh += 1; // parent memulai refresh saat menerima sinyal ini
+  assert.equal(jumlahRefresh, 1);
   assert.equal(refreshTertunda.current, false);
 });

@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { Suspense, useState } from "react";
 import { Spinner } from "@/components/indikator-proses";
 
@@ -58,9 +57,8 @@ function FormMasuk() {
                 className="w-full rounded-md border border-garis-kuat px-3 py-2.5 text-[16px] text-tinta outline-hidden focus:border-aksi" />
             </div>
             <div>
-              <div className="mb-1.5 flex items-center justify-between gap-3">
+              <div className="mb-1.5">
                 <label htmlFor="sandi" className="block text-[14px] font-medium text-tinta">Sandi</label>
-                <Link href="/pulihkan-sandi" className="text-[12.5px] font-medium text-aksi hover:underline">Lupa sandi?</Link>
               </div>
               <input id="sandi" type="password" autoComplete="current-password" required
                 value={sandi} onChange={(e) => setSandi(e.target.value)}

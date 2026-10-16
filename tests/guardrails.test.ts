@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   PERAN_AKUN, internal, bolehAksesProyekPeran, bolehKelolaPengguna,
   bolehKelolaProyek, bolehHapusBukti, bolehLewatiGuardHapusSkenario,
+  bolehLihatAkunUji, bolehKelolaAkunUji,
   bolehKelolaSkenario, bolehUbahEksekusi, bolehUbahKolomSkenario,
 } from "../lib/aturan-peran";
 import {
@@ -21,6 +22,8 @@ test("matriks akses: internal melihat portofolio, tester dibatasi penugasan", ()
     assert.equal(bolehAksesProyekPeran(role, true), true, `${role}: assigned`);
     assert.equal(bolehKelolaPengguna(role), role === "ADMIN", `${role}: users`);
     assert.equal(bolehKelolaProyek(role), pengelola.has(role), `${role}: projects`);
+    assert.equal(bolehLihatAkunUji(role), role !== "PIMPINAN", `${role}: test account visibility after project access`);
+    assert.equal(bolehKelolaAkunUji(role), pengelola.has(role), `${role}: test account management`);
     assert.equal(bolehKelolaSkenario(role), pengelola.has(role), `${role}: scenarios`);
     assert.equal(bolehHapusBukti(role), role !== "PIMPINAN", `${role}: delete evidence`);
     assert.equal(bolehLewatiGuardHapusSkenario(role), role === "ADMIN", `${role}: scenario evidence override`);

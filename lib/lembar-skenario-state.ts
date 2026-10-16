@@ -29,3 +29,14 @@ export function ambilRefreshTertundaJikaAman(
   refreshTertunda.current = false;
   return true;
 }
+
+/** Jalankan refresh sekarang bila aman; jika masih ada draf, antrekan sampai draf selesai. */
+export function jalankanRefreshJikaAman(
+  drafAktif: RefNilai<boolean>,
+  refreshTertunda: RefNilai<boolean>,
+  mulaiRefresh: () => void,
+): boolean {
+  if (tundaRefreshJikaDrafAktif(drafAktif, refreshTertunda)) return false;
+  mulaiRefresh();
+  return true;
+}

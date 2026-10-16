@@ -7,6 +7,7 @@ export {
   PERAN_AKUN, PERAN_PENGUJI, internal, bolehKelolaPengguna,
   bolehKelolaProyek, bolehHapusBukti, bolehLewatiGuardHapusSkenario,
   bolehUbahEksekusi, bolehKelolaSkenario, bolehUbahKolomSkenario, bolehAksesProyekPeran,
+  bolehLihatAkunUji, bolehKelolaAkunUji,
 } from "@/lib/aturan-peran";
 export type { Peran, KolomSkenario } from "@/lib/aturan-peran";
 
