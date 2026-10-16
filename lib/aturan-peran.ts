@@ -36,6 +36,30 @@ export function bolehUbahEksekusi(peran: Peran): boolean {
   return peran !== "PIMPINAN";
 }
 
+export type KolomSkenario =
+  | "judul"
+  | "langkahPengujian"
+  | "hasilDiharapkan"
+  | "hasilAktual"
+  | "status"
+  | "catatanTindakLanjut"
+  | "pengujiId"
+  | "moduleId"
+  | "siapRetest";
+
+/**
+ * Tester yang sudah mendapat akses ke proyek hanya dapat mencatat hasil aktual
+ * dan temuan/tindak lanjut. Definisi, status, penugasan, lembar, dan retest
+ * tetap dikelola Admin/Internal PSII; Pimpinan tetap hanya-baca.
+ */
+export function bolehUbahKolomSkenario(peran: Peran, kolom: KolomSkenario): boolean {
+  if (bolehKelolaSkenario(peran)) return true;
+  if (peran === "INTERNAL_KEMENKEU" || peran === "EKSTERNAL_KEMENKEU") {
+    return kolom === "hasilAktual" || kolom === "catatanTindakLanjut";
+  }
+  return false;
+}
+
 /** Perubahan master skenario (buat/hapus dan definisi) hanya untuk pengelola. */
 export function bolehKelolaSkenario(peran: Peran): boolean {
   return PENGELOLA.includes(peran);

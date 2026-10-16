@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TabelSkenario, type Modul, type Orang, type Skenario } from "@/components/tabel-skenario";
+import { LembarSkenario } from "@/components/lembar-skenario";
 import { useFocusTrap } from "@/components/use-focus-trap";
 import { Button, Feedback } from "@/components/ui";
 import type { FasePengujian } from "@/lib/fase-proyek";
@@ -29,6 +30,8 @@ export function AreaSkenarioProyek({
 }: Props) {
   const [skenario, setSkenario] = useState(skenarioAwal);
   const [statistik, setStatistik] = useState(statistikAwal);
+  const [modulLokal, setModulLokal] = useState(modul);
+  const [lembarDipilih, setLembarDipilih] = useState<string | null>(modul[0]?.id ?? null);
   const [menyegarkan, setMenyegarkan] = useState(false);
   const [drafAktif, setDrafAktif] = useState(false);
   const [pesan, setPesan] = useState<{ jenis: "status" | "galat" | "peringatan"; teks: string } | null>(null);
@@ -43,6 +46,11 @@ export function AreaSkenarioProyek({
     setSkenario(skenarioAwal);
     setStatistik(statistikAwal);
   }, [skenarioAwal, statistikAwal]);
+
+  useEffect(() => {
+    setModulLokal(modul);
+    setLembarDipilih(modul[0]?.id ?? null);
+  }, [projectId, modul]);
 
   const segarkan = useCallback(async (manual: boolean) => {
     if (drafAktif) {
@@ -61,16 +69,17 @@ export function AreaSkenarioProyek({
       const response = await fetch(url, { cache: "no-store", signal: controller.signal });
       const hasil = await response.json().catch(() => ({ pesan: "Respons server tidak dapat dibaca." }));
       if (!response.ok) throw new Error(hasil.pesan ?? "Data proyek belum dapat diperbarui.");
-      if (!Array.isArray(hasil.skenario) || !hasil.statistik) {
+      if (!Array.isArray(hasil.skenario) || !Array.isArray(hasil.modul) || !hasil.statistik) {
         throw new Error("Format data terbaru tidak sesuai. Coba perbarui lagi.");
       }
       if (controller.signal.aborted) return;
 
       setSkenario(hasil.skenario as Skenario[]);
       setStatistik(hasil.statistik as Statistik);
+      setModulLokal(hasil.modul as Modul[]);
       setPesan({
         jenis: "status",
-        teks: manual ? "Tabel skenario dan statistik sudah diperbarui." : "Perubahan tersimpan; tabel dan statistik sudah disinkronkan.",
+        teks: manual ? "Lembar, tabel skenario, dan statistik sudah diperbarui." : "Perubahan tersimpan; lembar, tabel, dan statistik sudah disinkronkan.",
       });
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -140,6 +149,18 @@ export function AreaSkenarioProyek({
     ["Belum diuji", statistik.belum, "text-tinta-3"],
     ["Kelulusan", `${persen}%`, "text-tinta"],
   ] as const;
+  const tanpaKelompok = skenario.filter((item) => !item.module_id).length;
+  const idLembarAktif = lembarDipilih && modulLokal.some((item) => item.id === lembarDipilih)
+    ? lembarDipilih
+    : !lembarDipilih && tanpaKelompok > 0 ? null : modulLokal[0]?.id ?? null;
+  const adaLembar = modulLokal.length > 0 || tanpaKelompok > 0;
+  const skenarioLembar = skenario.filter((item) => idLembarAktif
+    ? item.module_id === idLembarAktif
+    : !item.module_id);
+  const modulAktif = modulLokal.find((item) => item.id === idLembarAktif);
+  const modulUntukTabel: Modul[] = modulAktif
+    ? [modulAktif]
+    : tanpaKelompok > 0 ? [{ id: "", kode: "—", nama: "Tanpa kelompok", urutan: Number.MAX_SAFE_INTEGER }] : [];
 
   return (
     <>
@@ -156,7 +177,7 @@ export function AreaSkenarioProyek({
                 <path d="M5.6 9a7 7 0 0 1 12.1-2.3L20 12M4 12l2.3 5.3A7 7 0 0 0 18.4 15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
               </svg>
             )}
-            {menyegarkan ? "Memperbarui…" : drafAktif ? "Draf belum disimpan" : "Refresh tabel & statistik"}
+            {menyegarkan ? "Memperbarui…" : drafAktif ? "Draf belum disimpan" : "Refresh lembar & skenario"}
           </Button>
         </div>
         {pesan && (
@@ -187,18 +208,37 @@ export function AreaSkenarioProyek({
         ))}
       </nav>
 
-      <TabelSkenario
-        projectId={projectId}
-        fase={fase}
-        skenarioAwal={skenario}
-        modul={modul}
-        orang={orang}
-        sayaId={sayaId}
-        bolehUbah={bolehUbah}
-        bolehKelolaSkenario={bolehKelolaSkenario}
-        onDataMutasi={jadwalkanRefresh}
-        onDraftChange={setDrafAktif}
-      />
+      <LembarSkenario projectId={projectId} modul={modulLokal} skenario={skenario}
+        aktifId={idLembarAktif} bolehKelola={bolehKelolaSkenario} disabled={drafAktif}
+        onPilih={setLembarDipilih}
+        onDibuat={(baru) => {
+          setModulLokal((lama) => [...lama, baru].sort((a, b) => a.urutan - b.urutan || a.kode.localeCompare(b.kode)));
+          setLembarDipilih(baru.id);
+        }} />
+      {adaLembar && (
+        <section id="panel-skenario-lembar" role="tabpanel"
+          aria-labelledby={idLembarAktif ? `tab-lembar-${idLembarAktif}` : "tab-lembar-tanpa-kelompok"}>
+          {idLembarAktif === null && tanpaKelompok > 0 && (
+            <Feedback kind="info" className="mb-3">
+              Skenario lama tanpa kelompok tetap tersedia di sini. Buat lembar baru untuk menambahkan skenario ke kelompok tertentu.
+            </Feedback>
+          )}
+          <TabelSkenario
+            key={`${projectId}:${fase}:${idLembarAktif ?? "tanpa-kelompok"}`}
+            projectId={projectId}
+            fase={fase}
+            skenarioAwal={skenarioLembar}
+            modul={modulUntukTabel}
+            moduleIdDefault={idLembarAktif}
+            orang={orang}
+            sayaId={sayaId}
+            bolehUbah={bolehUbah}
+            bolehKelolaSkenario={bolehKelolaSkenario}
+            onDataMutasi={jadwalkanRefresh}
+            onDraftChange={setDrafAktif}
+          />
+        </section>
+      )}
       {tautanTertunda && (
         <div className="fixed inset-0 z-80 flex items-center justify-center bg-tinta/50 p-4 backdrop-blur-[2px]">
           <section ref={dialogNavigasiRef} tabIndex={-1} role="alertdialog" aria-modal="true" aria-labelledby="judul-tinggalkan-draf"

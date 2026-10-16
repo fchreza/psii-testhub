@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   PERAN_AKUN, internal, bolehAksesProyekPeran, bolehKelolaPengguna,
-  bolehKelolaProyek, bolehKelolaSkenario, bolehUbahEksekusi,
+  bolehKelolaProyek, bolehKelolaSkenario, bolehUbahEksekusi, bolehUbahKolomSkenario,
 } from "../lib/aturan-peran";
 import {
   originSama, validasiMetadataObjek, perluAlasanHapusBuktiTerakhir,
@@ -21,6 +21,20 @@ test("matriks akses: internal melihat portofolio, tester dibatasi penugasan", ()
     assert.equal(bolehKelolaProyek(role), pengelola.has(role), `${role}: projects`);
     assert.equal(bolehKelolaSkenario(role), pengelola.has(role), `${role}: scenarios`);
     assert.equal(bolehUbahEksekusi(role), role !== "PIMPINAN", `${role}: execution`);
+  }
+});
+
+test("tester hanya dapat mengedit hasil aktual dan temuan/tindak lanjut", () => {
+  const bolehTester = ["hasilAktual", "catatanTindakLanjut"] as const;
+  const khususPengelola = ["judul", "langkahPengujian", "hasilDiharapkan", "status", "pengujiId", "moduleId", "siapRetest"] as const;
+  for (const role of ["INTERNAL_KEMENKEU", "EKSTERNAL_KEMENKEU"] as const) {
+    for (const kolom of bolehTester) assert.equal(bolehUbahKolomSkenario(role, kolom), true, `${role}:${kolom}`);
+    for (const kolom of khususPengelola) assert.equal(bolehUbahKolomSkenario(role, kolom), false, `${role}:${kolom}`);
+  }
+  for (const kolom of [...bolehTester, ...khususPengelola]) {
+    assert.equal(bolehUbahKolomSkenario("PIMPINAN", kolom), false, `PIMPINAN:${kolom}`);
+    assert.equal(bolehUbahKolomSkenario("ADMIN", kolom), true, `ADMIN:${kolom}`);
+    assert.equal(bolehUbahKolomSkenario("INTERNAL_PSII", kolom), true, `INTERNAL_PSII:${kolom}`);
   }
 });
 
