@@ -59,13 +59,13 @@ export async function POST(req: Request) {
           `SELECT
              (SELECT count(*) FROM th_scenarios WHERE project_id = $1)::int AS skenario,
              (SELECT count(*) FROM th_project_members WHERE project_id = $1)::int AS anggota,
-             (SELECT count(*) FROM th_evidence e JOIN th_scenarios s ON s.id = e.scenario_id WHERE s.project_id = $1)::int AS bukti`,
+             (SELECT count(*) FROM th_evidence e JOIN th_scenarios s ON s.id = e.scenario_id WHERE s.project_id = $1 AND e.status <> 'DELETED')::int AS bukti`,
           [projectId],
         )) as unknown as { skenario: number; anggota: number; bukti: number }[];
         const bukti = (await tx.unsafe(
           `SELECT e.path FROM th_evidence e
            JOIN th_scenarios s ON s.id = e.scenario_id
-           WHERE s.project_id = $1`, [projectId],
+           WHERE s.project_id = $1 AND e.status <> 'DELETED'`, [projectId],
         )) as unknown as { path: string }[];
         await tx.unsafe(
           `INSERT INTO th_audit_logs (user_id, project_id, aksi, kolom, nilai_lama)

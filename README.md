@@ -41,7 +41,7 @@ laporan, dan penyaring lanjutan lintas proyek.
 ```bash
 cp .env.contoh .env.local      # isi DATABASE_URL dan SESI_SECRET
 npm install
-npm run migrasi                # buat tabel + verifikasi
+npm run migrasi -- db/migrasi-001.sql db/migrasi-002-peran.sql db/migrasi-003-pemulihan-sandi.sql db/migrasi-004-jenis-pengujian.sql db/migrasi-005-ketahanan-operasional.sql --setuju-migrasi-004
 npm run akun -- <email> "<Nama>" "<Jabatan>"   # akun admin pertama
 npm run dev                    # http://localhost:3200
 ```
@@ -50,8 +50,10 @@ Skrip lain:
 
 ```bash
 npm run sandi -- <email>       # setel ulang sandi (menulis ke /tmp, tidak dicetak)
+npm test                       # tes guardrail dan migrasi pada PostgreSQL tertanam
 npm run typecheck
 npm run build
+npm run rekonsiliasi-bukti     # retry upload/delete tertunda; jalankan terjadwal secara manual oleh operator
 ```
 
 Pemulihan sandi mandiri memerlukan `APP_URL`, `RESEND_API_KEY`, dan `RESEND_FROM`
@@ -59,9 +61,20 @@ di `.env.local`/environment deployment. `RESEND_FROM` harus memakai alamat pada
 domain yang sudah diverifikasi di Resend; `APP_URL` production harus HTTPS. Tanpa
 konfigurasi ini, halaman pemulihan akan mengarahkan pengguna untuk menghubungi Admin.
 
-Migrasi `003` menambahkan penyimpanan hash token pemulihan dan `sesi_versi`.
-Jalankan `npm run migrasi` pada database TestHub yang benar sebelum deployment
-kode yang memakai kolom baru.
+Runner migrasi tidak memiliki daftar default: pilih file secara eksplisit agar
+migrasi `004` (yang membutuhkan tinjauan/persetujuan) tidak berjalan tanpa sengaja.
+Flag `--setuju-migrasi-004` adalah pengakuan eksplisit setelah SQL `004` ditinjau;
+di `NODE_ENV=production`, runner juga menolak berjalan tanpa `--setujui-produksi`.
+Pada database production yang sudah memakai migrasi `001`–`004`, migrasi baru dapat
+dijalankan sendiri setelah pemilik menyetujui SQL tepatnya:
+
+```bash
+NODE_ENV=production npm run migrasi -- db/migrasi-005-ketahanan-operasional.sql --setujui-produksi
+```
+
+Jangan jalankan perintah produksi sebelum persetujuan pemilik dan verifikasi target
+database TestHub. Runner memeriksa tabel, kolom, indeks, dan role; setiap kekurangan
+menghentikan proses (fail closed). CI di GitHub menjalankan tes, typecheck, dan build.
 
 ## Catatan rancangan
 

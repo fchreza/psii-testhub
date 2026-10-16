@@ -234,8 +234,8 @@ export function TabelSkenario({
     if (saring.status && s.status !== saring.status) return false;
     if (saring.modul && s.module_id !== saring.modul) return false;
     if (saring.penguji && s.penguji_id !== saring.penguji) return false;
-    if (saring.cari) {
-      const q = saring.cari.toLowerCase();
+    if (saring.cari.trim()) {
+      const q = saring.cari.trim().toLowerCase();
       if (!s.kode.toLowerCase().includes(q) && !s.judul.toLowerCase().includes(q)) return false;
     }
     return true;
@@ -251,6 +251,7 @@ export function TabelSkenario({
         .filter((k) => k.baris.length > 0)
     : [{ modul: null as Modul | null, baris: tersaring }];
 
+  const adaFilterAktif = Boolean(saring.status || saring.modul || saring.penguji || saring.cari.trim());
   const terpilih = data.find((x) => x.id === bukaPanel) ?? null;
 
   return (
@@ -315,7 +316,15 @@ export function TabelSkenario({
         </p>
       )}
 
-      {data.length === 0 ? (
+      {data.length > 0 && tersaring.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-garis-kuat bg-kartu px-6 py-10 text-center">
+          <p className="text-[15px] font-medium text-tinta">Tidak ada skenario yang cocok dengan filter</p>
+          <p className="mt-1 text-[13.5px] text-tinta-2">Coba ubah kata pencarian atau reset semua filter.</p>
+          {adaFilterAktif && <Button type="button" variant="secondary"
+            onClick={() => setSaring({ status: "", modul: "", penguji: "", cari: "" })}
+            className="mt-4 min-h-9 px-3 py-1.5 text-[13px]">Reset filter</Button>}
+        </div>
+      ) : data.length === 0 ? (
         <div className="rounded-lg border border-garis bg-kartu px-6 py-12 text-center">
           <p className="text-[15px] font-medium text-tinta">Belum ada skenario {fase}</p>
           <p className="mx-auto mt-1 max-w-md text-[14px] leading-relaxed text-tinta-2">

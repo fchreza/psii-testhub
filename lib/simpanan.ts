@@ -1,22 +1,11 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand,
+  CopyObjectCommand,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 
-/**
- * Penyimpanan berkas bukti.
- *
- * KENAPA BUCKET PRIVAT + URL BERTANDA TANGAN, bukan bucket publik:
- * Berkas contoh di kantor memuat tangkapan layar sistem OM-SPAN, termasuk nama
- * pegawai dan potongan data. Itu bukan bahan publik. Bucket publik berarti
- * siapa pun yang menebak alamatnya bisa mengunduh seluruh bukti pengujian.
- *
- * KENAPA UNGGAH LANGSUNG DARI PERAMBAN, bukan lewat server:
- * Vercel membatasi badan permintaan 4,5 MB. Bukti yang diminta PRD sampai
- * 10 MB per berkas. Kalau berkasnya dilewatkan server, unggahan gagal dengan
- * pesan yang tidak menjelaskan sebabnya. Dengan URL bertanda tangan, berkasnya
- * pergi langsung ke penyimpanan dan batas itu tidak berlaku.
- */
-
+/** Penyimpanan privat S3-compatible untuk bukti pengujian. */
 let _klien: S3Client | null = null;
 
 function klien(): S3Client {
@@ -25,26 +14,10 @@ function klien(): S3Client {
   const region = process.env.AWS_REGION;
   const id = process.env.AWS_ACCESS_KEY_ID;
   const sandi = process.env.AWS_SECRET_ACCESS_KEY;
-
-  /*
-   * Gagal KERAS kalau belum lengkap, jangan diam-diam memakai nilai contoh.
-   * Penyimpanan yang salah tujuan lebih buruk daripada aplikasi yang menolak
-   * jalan: berkas pengujian bisa mendarat di tempat yang tidak seharusnya.
-   */
   if (!endpoint || !region || !id || !sandi) {
-    throw new Error(
-      "Penyimpanan belum lengkap: butuh AWS_ENDPOINT_URL_S3, AWS_REGION, " +
-      "AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY",
-    );
+    throw new Error("Penyimpanan belum lengkap: butuh AWS_ENDPOINT_URL_S3, AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY");
   }
-
-  _klien = new S3Client({
-    endpoint,
-    region,
-    credentials: { accessKeyId: id, secretAccessKey: sandi },
-    // Penyimpanan ini butuh penandatanganan v4; tanpa ini unggahan ditolak 403.
-    forcePathStyle: true,
-  });
+  _klien = new S3Client({ endpoint, region, credentials: { accessKeyId: id, secretAccessKey: sandi }, forcePathStyle: true });
   return _klien;
 }
 
@@ -54,7 +27,6 @@ export function bucket(): string {
   return b;
 }
 
-/** Jenis berkas yang boleh diunggah sebagai bukti (PRD Bagian 8). */
 export const JENIS_BUKTI: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -66,45 +38,38 @@ export const JENIS_BUKTI: Record<string, string> = {
   "text/csv": "csv",
 };
 
-/** Batas 10 MB sesuai PRD Bagian 8. */
 export const BATAS_BUKTI = 10 * 1024 * 1024;
+export const MASA_URL_UNGGAH_DETIK = 600;
 
 export function jenisDikenal(mime: string): boolean {
   return Object.prototype.hasOwnProperty.call(JENIS_BUKTI, mime);
 }
 
-/**
- * Kunci objek di penyimpanan.
- *
- * KENAPA BERLAPIS PER PROYEK DAN SKENARIO:
- * supaya berkas bisa ditelusuri balik ke skenarionya hanya dari namanya, dan
- * supaya menghapus satu proyek bisa dibatasi pada satu awalan kunci.
- *
- * KENAPA NAMANYA DIACAK: nama berkas asli bisa memuat nama orang atau sistem.
- * Nama acak mencegah dua unggahan saling menimpa, dan mencegah orang menebak.
- */
-export function kunciBukti(projectId: string, scenarioId: string, mime: string): string {
-  const ext = JENIS_BUKTI[mime] ?? "bin";
-  const acak = crypto.randomUUID().replace(/-/g, "").slice(0, 20);
-  return `bukti/${projectId}/${scenarioId}/${acak}.${ext}`;
+function namaAcak(): string {
+  return crypto.randomUUID().replace(/-/g, "").slice(0, 24);
 }
 
-/** URL untuk mengunggah, berlaku 10 menit. */
-export async function urlUnggah(kunci: string, mime: string): Promise<string> {
+/** Kunci final dibuat server dan tidak pernah ditandatangani untuk browser. */
+export function kunciBukti(projectId: string, scenarioId: string, mime: string): string {
+  const ext = JENIS_BUKTI[mime] ?? "bin";
+  return `bukti/${projectId}/${scenarioId}/${namaAcak()}.${ext}`;
+}
+
+/** Browser hanya dapat menulis area staging, bukan objek bukti final. */
+export function kunciSementara(projectId: string, scenarioId: string, mime: string): string {
+  const ext = JENIS_BUKTI[mime] ?? "bin";
+  return `bukti-upload/${projectId}/${scenarioId}/${namaAcak()}.${ext}`;
+}
+
+/** Content-Length ikut ditandatangani; finalisasi tetap memeriksa ukuran HEAD aktual. */
+export async function urlUnggah(kunci: string, mime: string, ukuran: number): Promise<string> {
   return getSignedUrl(
     klien(),
-    new PutObjectCommand({ Bucket: bucket(), Key: kunci, ContentType: mime }),
-    { expiresIn: 600 },
+    new PutObjectCommand({ Bucket: bucket(), Key: kunci, ContentType: mime, ContentLength: ukuran }),
+    { expiresIn: MASA_URL_UNGGAH_DETIK },
   );
 }
 
-/**
- * URL untuk melihat, berlaku 1 jam.
- *
- * KENAPA TIDAK PERMANEN: kalau URL-nya permanen dan tersebar, bukti pengujian
- * bisa dibuka siapa pun selamanya tanpa bisa ditarik kembali. Satu jam cukup
- * untuk membuka dan memeriksa.
- */
 export async function urlLihat(kunci: string, unduh = false): Promise<string> {
   return getSignedUrl(
     klien(),
@@ -117,24 +82,45 @@ export async function urlLihat(kunci: string, unduh = false): Promise<string> {
   );
 }
 
-/** Hapus satu objek. Dipakai saat penggantian bukti atau penghapusan. */
-export async function hapusObjek(kunci: string): Promise<void> {
-  await klien().send(new DeleteObjectCommand({ Bucket: bucket(), Key: kunci }));
+export type MetadataObjek = {
+  ukuran: number | null;
+  tipe: string | null;
+  etag: string | null;
+  diubahPada: Date | undefined;
+};
+
+/** HEAD membedakan objek hilang dari gangguan storage agar gangguan tidak dianggap 404. */
+export async function inspeksiObjek(kunci: string): Promise<MetadataObjek | null> {
+  try {
+    const hasil = await klien().send(new HeadObjectCommand({ Bucket: bucket(), Key: kunci }));
+    return {
+      ukuran: hasil.ContentLength ?? null,
+      tipe: hasil.ContentType ?? null,
+      etag: hasil.ETag ?? null,
+      diubahPada: hasil.LastModified,
+    };
+  } catch (error) {
+    const e = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+    if (e.$metadata?.httpStatusCode === 404 || e.name === "NotFound" || e.name === "NoSuchKey") return null;
+    throw error;
+  }
 }
 
-/**
- * Pastikan objek benar-benar ada di penyimpanan.
- *
- * KENAPA DIPERIKSA: peramban mengunggah LANGSUNG ke penyimpanan, jadi server
- * tidak melihat berkasnya lewat. Tanpa pemeriksaan ini, catatan bukti bisa
- * tercatat lengkap di database padahal berkasnya tidak pernah sampai —
- * dan itu baru ketahuan saat pimpinan membukanya.
- */
-export async function objekAda(kunci: string): Promise<boolean> {
-  try {
-    await klien().send(new HeadObjectCommand({ Bucket: bucket(), Key: kunci }));
-    return true;
-  } catch {
-    return false;
-  }
+/** Copy ke path final bersifat idempoten: tujuan yang sudah ada tidak ditimpa. */
+export async function promosikanObjek(staging: string, final: string, mime: string): Promise<void> {
+  if (await inspeksiObjek(final)) return;
+  const sumber = `/${bucket()}/${staging.split("/").map(encodeURIComponent).join("/")}`;
+  await klien().send(new CopyObjectCommand({
+    Bucket: bucket(),
+    Key: final,
+    CopySource: sumber,
+    MetadataDirective: "REPLACE",
+    ContentType: mime,
+    Metadata: { immutable: "true" },
+  }));
+}
+
+/** DeleteObject bersifat idempoten pada S3-compatible storage. */
+export async function hapusObjek(kunci: string): Promise<void> {
+  await klien().send(new DeleteObjectCommand({ Bucket: bucket(), Key: kunci }));
 }

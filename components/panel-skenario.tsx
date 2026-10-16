@@ -9,21 +9,21 @@ import { Spinner } from "@/components/indikator-proses";
 import { Button, Feedback, Select, Textarea } from "@/components/ui";
 
 type Riwayat = {
-  id: number; aksi: string; kolom: string | null;
+  id: string; aksi: string; kolom: string | null;
   nilai_lama: string | null; nilai_baru: string | null;
   pada: string; oleh: string | null;
 };
 
-const CACHE_RIWAYAT = new Map<string, { versi: string; riwayat: Riwayat[] }>();
+const CACHE_RIWAYAT = new Map<string, { versi: string; riwayat: Riwayat[]; nextCursor: string | null }>();
 const MAKS_CACHE_RIWAYAT = 100;
 
-function simpanCacheRiwayat(id: string, versi: string, riwayat: Riwayat[]) {
+function simpanCacheRiwayat(id: string, versi: string, riwayat: Riwayat[], nextCursor: string | null) {
   if (!CACHE_RIWAYAT.has(id) && CACHE_RIWAYAT.size >= MAKS_CACHE_RIWAYAT) {
     const pertama = CACHE_RIWAYAT.keys().next().value;
     if (pertama) CACHE_RIWAYAT.delete(pertama);
   }
   CACHE_RIWAYAT.delete(id);
-  CACHE_RIWAYAT.set(id, { versi, riwayat });
+  CACHE_RIWAYAT.set(id, { versi, riwayat, nextCursor });
 }
 
 type DrafSkenario = {
@@ -65,7 +65,13 @@ export function PanelSkenario({
   const [riwayat, setRiwayat] = useState<Riwayat[]>(() => CACHE_RIWAYAT.get(skenario.id)?.riwayat ?? []);
   const [riwayatMuat, setRiwayatMuat] = useState(() => !CACHE_RIWAYAT.has(skenario.id));
   const [riwayatGalat, setRiwayatGalat] = useState<string | null>(null);
+  const [riwayatCursor, setRiwayatCursor] = useState<string | null>(() => CACHE_RIWAYAT.get(skenario.id)?.nextCursor ?? null);
+  const [riwayatLagiMuat, setRiwayatLagiMuat] = useState(false);
+  const [riwayatLagiGalat, setRiwayatLagiGalat] = useState<string | null>(null);
   const [riwayatRetry, setRiwayatRetry] = useState(0);
+  const kunciRiwayatAktif = `${skenario.id}:${skenario.versi}`;
+  const kunciRiwayatRef = useRef(kunciRiwayatAktif);
+  kunciRiwayatRef.current = kunciRiwayatAktif;
   const versiDrafSebelumnya = useRef(skenario);
   const [draf, setDraf] = useState<DrafSkenario>(() => bentukDraf(skenario));
   const [editorRevision, setEditorRevision] = useState(0);
@@ -220,23 +226,36 @@ export function PanelSkenario({
       setRiwayat([]);
       setRiwayatMuat(false);
       setRiwayatGalat(null);
+      setRiwayatCursor(null);
+      setRiwayatLagiMuat(false);
+      setRiwayatLagiGalat(null);
       return () => { batal = true; };
     }
     const cache = CACHE_RIWAYAT.get(skenario.id);
-    if (cache) setRiwayat(cache.riwayat);
+    if (cache) {
+      setRiwayat(cache.riwayat);
+      setRiwayatCursor(cache.nextCursor);
+    } else {
+      setRiwayat([]);
+      setRiwayatCursor(null);
+    }
+    setRiwayatLagiMuat(false);
+    setRiwayatLagiGalat(null);
     const cacheCocok = cache?.versi === skenario.versi;
     setRiwayatMuat(!cacheCocok || riwayatRetry > 0);
     setRiwayatGalat(null);
     if (cacheCocok && riwayatRetry === 0) return () => { batal = true; };
     void (async () => {
       try {
-        const r = await fetch(`/api/v1/riwayat?scenarioId=${skenario.id}`);
+        const r = await fetch(`/api/v1/riwayat?scenarioId=${skenario.id}`, { cache: "no-store" });
         const j = await r.json().catch(() => ({}));
-        if (batal) return;
+        if (batal || kunciRiwayatRef.current !== kunciRiwayatAktif) return;
         if (!r.ok) { setRiwayatGalat(j.pesan ?? "Riwayat tidak dapat dimuat."); return; }
         const terbaru = j.riwayat ?? [];
-        simpanCacheRiwayat(skenario.id, skenario.versi, terbaru);
+        const nextCursor = j.nextCursor ?? null;
+        simpanCacheRiwayat(skenario.id, skenario.versi, terbaru, nextCursor);
         setRiwayat(terbaru);
+        setRiwayatCursor(nextCursor);
       } catch {
         if (!batal) setRiwayatGalat("Tidak dapat memuat riwayat. Periksa koneksi lalu coba lagi.");
       } finally {
@@ -245,6 +264,30 @@ export function PanelSkenario({
     })();
     return () => { batal = true; };
   }, [skenario.id, skenario.versi, isDraft, riwayatRetry]);
+
+  async function muatRiwayatLama() {
+    if (!riwayatCursor || riwayatLagiMuat) return;
+    const kunciAktif = `${skenario.id}:${skenario.versi}`;
+    const cursor = riwayatCursor;
+    setRiwayatLagiMuat(true);
+    setRiwayatLagiGalat(null);
+    try {
+      const r = await fetch(`/api/v1/riwayat?scenarioId=${skenario.id}&cursor=${encodeURIComponent(cursor)}`, { cache: "no-store" });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.pesan ?? "Riwayat lama tidak dapat dimuat.");
+      if (kunciRiwayatRef.current !== kunciAktif) return;
+      const lebihLama = (j.riwayat ?? []) as Riwayat[];
+      const gabungan = [...riwayat, ...lebihLama.filter((x) => !riwayat.some((sudah) => sudah.id === x.id))];
+      const nextCursor = j.nextCursor ?? null;
+      setRiwayat(gabungan);
+      setRiwayatCursor(nextCursor);
+      simpanCacheRiwayat(skenario.id, skenario.versi, gabungan, nextCursor);
+    } catch (error) {
+      if (kunciRiwayatRef.current === kunciAktif) setRiwayatLagiGalat(error instanceof Error ? error.message : "Riwayat lama tidak dapat dimuat.");
+    } finally {
+      if (kunciRiwayatRef.current === kunciAktif) setRiwayatLagiMuat(false);
+    }
+  }
 
   return (
     <>
@@ -400,6 +443,16 @@ export function PanelSkenario({
                   </li>
                 ))}
               </ul>
+            )}
+            {!riwayatMuat && riwayatCursor && (
+              <div className="mt-3">
+                {riwayatLagiGalat && <Feedback kind="error" className="mb-2">{riwayatLagiGalat}</Feedback>}
+                <Button type="button" variant="secondary" onClick={() => void muatRiwayatLama()}
+                  disabled={riwayatLagiMuat} busy={riwayatLagiMuat} aria-busy={riwayatLagiMuat}
+                  className="min-h-8 px-2.5 py-1 text-[12px]">
+                  {riwayatLagiMuat ? "Memuat…" : "Muat riwayat yang lebih lama"}
+                </Button>
+              </div>
             )}
           </div>
           </>

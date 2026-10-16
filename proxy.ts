@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { originSama } from "@/lib/validasi-bukti";
 
 /**
  * Gerbang lapis PERTAMA: membelokkan permintaan yang jelas belum masuk.
@@ -19,6 +20,14 @@ const PUBLIK = [
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  // Semua perubahan API berasal dari antarmuka same-origin; Origin kosong,
+  // null, atau lintas situs ditolak di gerbang pertama. Cookie tetap SameSite=Lax.
+  if (pathname.startsWith("/api/") && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+    if (!originSama(req.headers.get("origin"), req.url)) {
+      return NextResponse.json({ pesan: "Permintaan lintas situs ditolak." }, { status: 403 });
+    }
+  }
 
   if (PUBLIK.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
     return NextResponse.next();

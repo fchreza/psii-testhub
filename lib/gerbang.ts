@@ -2,16 +2,12 @@ import { notFound, redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { klienMentah } from "@/db";
 import { sesiSekarang } from "@/lib/sesi";
-
-export const PERAN_AKUN = [
-  "ADMIN",
-  "PIMPINAN",
-  "INTERNAL_PSII",
-  "INTERNAL_KEMENKEU",
-  "EKSTERNAL_KEMENKEU",
-] as const;
-
-export type Peran = (typeof PERAN_AKUN)[number];
+import { internal, bolehAksesProyekPeran, bolehKelolaPengguna, type Peran } from "@/lib/aturan-peran";
+export {
+  PERAN_AKUN, PERAN_PENGUJI, internal, bolehKelolaPengguna,
+  bolehKelolaProyek, bolehUbahEksekusi, bolehKelolaSkenario, bolehAksesProyekPeran,
+} from "@/lib/aturan-peran";
+export type { Peran } from "@/lib/aturan-peran";
 
 export type Pengguna = {
   id: string;
@@ -20,34 +16,6 @@ export type Pengguna = {
   jabatan: string | null;
   peran: Peran;
 };
-
-const PEMILIK_PORTOFOLIO: Peran[] = ["ADMIN", "PIMPINAN", "INTERNAL_PSII"];
-const PENGELOLA: Peran[] = ["ADMIN", "INTERNAL_PSII"];
-export const PERAN_PENGUJI: Peran[] = ["INTERNAL_KEMENKEU", "EKSTERNAL_KEMENKEU"];
-
-/** Role yang dapat melihat seluruh portofolio proyek. */
-export function internal(peran: Peran): boolean {
-  return PEMILIK_PORTOFOLIO.includes(peran);
-}
-
-export function bolehKelolaPengguna(peran: Peran): boolean {
-  return peran === "ADMIN";
-}
-
-/** Admin dan Internal PSII dapat mengelola struktur proyek/skenario. */
-export function bolehKelolaProyek(peran: Peran): boolean {
-  return PENGELOLA.includes(peran);
-}
-
-/** Semua selain Pimpinan dapat menjalankan dan mengisi pengujian. */
-export function bolehUbahEksekusi(peran: Peran): boolean {
-  return peran !== "PIMPINAN";
-}
-
-/** Perubahan master skenario (buat/hapus dan definisi) hanya untuk pengelola. */
-export function bolehKelolaSkenario(peran: Peran): boolean {
-  return PENGELOLA.includes(peran);
-}
 
 /** Untuk halaman server component. Mengalihkan ke /masuk kalau belum ada sesi. */
 export async function wajibMasuk(): Promise<Pengguna> {
@@ -101,7 +69,7 @@ export async function bolehAksesProyek(pengguna: Pengguna, projectId: string): P
     `SELECT 1 AS ada FROM th_project_members WHERE project_id = $1 AND user_id = $2::uuid`,
     [projectId, pengguna.id],
   )) as unknown as { ada: number }[];
-  return Boolean(m);
+  return bolehAksesProyekPeran(pengguna.peran, Boolean(m));
 }
 
 /** Klausa cakupan portofolio untuk query yang memakai alias proyek `p`. */

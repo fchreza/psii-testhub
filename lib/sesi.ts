@@ -121,31 +121,3 @@ export async function sesiSekarang(): Promise<{ userId: string; versi: number } 
     return null;
   }
 }
-
-/** Batas percobaan masuk. Disimpan di memori proses. */
-const percobaan = new Map<string, { jumlah: number; sampai: number }>();
-const MAKS_PERCOBAAN = 10;
-const JEDA_MS = 15 * 60 * 1000;
-
-/**
- * KENAPA PER-EMAIL, BUKAN PER-IP:
- * Satu kantor biasanya keluar lewat satu alamat IP. Membatasi per-IP berarti
- * satu orang salah ketik sepuluh kali akan mengunci seluruh subdit.
- */
-export function bolehCoba(email: string): { boleh: boolean; sisaMenit?: number } {
-  const c = percobaan.get(email.toLowerCase());
-  if (!c || c.sampai <= Date.now()) return { boleh: true };
-  if (c.jumlah < MAKS_PERCOBAAN) return { boleh: true };
-  return { boleh: false, sisaMenit: Math.ceil((c.sampai - Date.now()) / 60000) };
-}
-
-export function catatGagal(email: string) {
-  const k = email.toLowerCase();
-  const c = percobaan.get(k);
-  if (!c || c.sampai <= Date.now()) percobaan.set(k, { jumlah: 1, sampai: Date.now() + JEDA_MS });
-  else c.jumlah += 1;
-}
-
-export function bersihkanPercobaan(email: string) {
-  percobaan.delete(email.toLowerCase());
-}

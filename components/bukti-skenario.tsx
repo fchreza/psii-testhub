@@ -71,11 +71,13 @@ export function BuktiSkenario({
   const [sukses, setSukses] = useState<string | null>(null);
   const [perbesar, setPerbesar] = useState<Bukti | null>(null);
   const [konfirmasiHapus, setKonfirmasiHapus] = useState<Bukti | null>(null);
+  const [alasanHapus, setAlasanHapus] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const operasiAktif = useRef<string | null>(null);
+  const kunciUploadPerBerkas = useRef(new Map<string, string>());
   const previewRef = useFocusTrap<HTMLDivElement>(perbesar !== null, () => setPerbesar(null));
   const hapusDialogRef = useFocusTrap<HTMLElement>(konfirmasiHapus !== null, () => {
-    if (!operasiAktif.current) { setKonfirmasiHapus(null); setGalat(null); }
+    if (!operasiAktif.current) { setKonfirmasiHapus(null); setGalat(null); setAlasanHapus(""); }
   });
 
   const ambil = useCallback(async () => {
@@ -99,6 +101,9 @@ export function BuktiSkenario({
   async function unggah(berkasAsli: File) {
     if (operasiAktif.current) return;
     const kunciOperasi = `unggah:${berkasAsli.name}`;
+    const sidikBerkas = `${berkasAsli.name}\u0000${berkasAsli.size}\u0000${berkasAsli.lastModified}`;
+    const idempotencyKey = kunciUploadPerBerkas.current.get(sidikBerkas) ?? crypto.randomUUID();
+    kunciUploadPerBerkas.current.set(sidikBerkas, idempotencyKey);
     operasiAktif.current = kunciOperasi;
     setGalat(null); setSukses(null);
     setSibuk(kunciOperasi);
@@ -115,14 +120,22 @@ export function BuktiSkenario({
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           aksi: "izin_unggah", projectId, scenarioId,
-          namaBerkas: berkas.name, mime: berkas.type, ukuran: berkas.size,
+          namaBerkas: berkas.name, mime: berkas.type, ukuran: berkas.size, idempotencyKey,
         }),
       });
       if (!r1.ok) {
         const j = await r1.json().catch(() => ({ pesan: "Gagal minta izin unggah" }));
+        if (r1.status === 410) kunciUploadPerBerkas.current.delete(sidikBerkas);
         setGalat(j.pesan); return;
       }
-      const { kunci, url } = await r1.json();
+      const { kunci, url, sudahSelesai } = await r1.json();
+      if (sudahSelesai) {
+        kunciUploadPerBerkas.current.delete(sidikBerkas);
+        await ambil();
+        setSukses(`${berkas.name} sudah tercatat; tidak dibuat duplikat.`);
+        onDataMutasi?.();
+        return;
+      }
 
       // Langkah 2 — unggah LANGSUNG ke penyimpanan, tidak lewat server.
       const r2 = await fetch(url, {
@@ -138,14 +151,16 @@ export function BuktiSkenario({
       const r3 = await fetch("/api/v1/bukti", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          aksi: "catat", projectId, scenarioId, kunci,
+          aksi: "catat", projectId, scenarioId, kunci, idempotencyKey,
           namaBerkas: berkas.name, mime: berkas.type, ukuran: berkas.size,
         }),
       });
       if (!r3.ok) {
         const j = await r3.json().catch(() => ({ pesan: "Gagal mencatat bukti" }));
+        if (r3.status === 410) kunciUploadPerBerkas.current.delete(sidikBerkas);
         setGalat(j.pesan); return;
       }
+      kunciUploadPerBerkas.current.delete(sidikBerkas);
       await ambil();
       setSukses(`${berkas.name} berhasil diunggah.`);
       onDataMutasi?.();
@@ -160,7 +175,7 @@ export function BuktiSkenario({
     }
   }
 
-  async function hapus(b: Bukti) {
+  async function hapus(b: Bukti, alasan: string) {
     if (operasiAktif.current) return;
     operasiAktif.current = b.id;
     setGalat(null); setSukses(null);
@@ -168,14 +183,17 @@ export function BuktiSkenario({
     try {
       const r = await fetch("/api/v1/bukti", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ aksi: "hapus", evidenceId: b.id, projectId }),
+        body: JSON.stringify({ aksi: "hapus", evidenceId: b.id, projectId, alasan }),
       });
       const j = await r.json().catch(() => ({ pesan: "Respons server tidak dapat dibaca." }));
       if (!r.ok) { setGalat(j.pesan ?? "Gagal menghapus bukti."); return; }
       setDaftar((d) => d.filter((x) => x.id !== b.id));
       setKonfirmasiHapus(null);
+      setAlasanHapus("");
       setGalat(null);
-      setSukses(`${b.nama_asli ?? "Bukti"} berhasil dihapus.`);
+      setSukses(j.pending
+        ? `${b.nama_asli ?? "Bukti"} ditandai untuk dihapus; sistem akan mencoba kembali saat storage tersedia.`
+        : `${b.nama_asli ?? "Bukti"} berhasil dihapus.`);
       onDataMutasi?.();
     } catch {
       setGalat("Tidak dapat terhubung. Bukti belum dihapus.");
@@ -283,7 +301,7 @@ export function BuktiSkenario({
       {konfirmasiHapus && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
           <button type="button" aria-label="Tutup konfirmasi hapus bukti" disabled={!!sibuk}
-            onClick={() => { setKonfirmasiHapus(null); setGalat(null); }}
+            onClick={() => { setKonfirmasiHapus(null); setGalat(null); setAlasanHapus(""); }}
             className="absolute inset-0 bg-tinta/45 disabled:cursor-wait" />
             <section ref={hapusDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="judul-hapus-bukti"
             className="relative z-10 w-full max-w-lg rounded-xl border border-garis bg-kartu p-5 shadow-2xl sm:p-6">
@@ -291,13 +309,20 @@ export function BuktiSkenario({
             <p className="mt-2 break-words text-[13.5px] leading-relaxed text-tinta-2">
               Bukti <strong>{konfirmasiHapus.nama_asli ?? "berkas"}</strong> akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.
             </p>
+            <label htmlFor="alasan-hapus-bukti" className="mt-4 block text-[13px] font-medium text-tinta">
+              Alasan / tindak lanjut <span className="font-normal text-tinta-3">(wajib jika ini bukti terakhir pada status Gagal/Tertunda)</span>
+            </label>
+            <textarea id="alasan-hapus-bukti" value={alasanHapus} maxLength={1000}
+              onChange={(e) => setAlasanHapus(e.target.value)} rows={3}
+              className="mt-1.5 w-full resize-y rounded-lg border border-garis-kuat bg-kartu px-3 py-2 text-[13.5px] text-tinta outline-none focus:border-aksi focus-visible:ring-4 focus-visible:ring-aksi-lembut"
+              placeholder="Jelaskan alasan atau tindak lanjut…" />
             {galat && <Feedback kind="error" className="mt-3">{galat}</Feedback>}
             <div className="mt-5 flex justify-end gap-2">
               <Button type="button" autoFocus disabled={!!sibuk}
-                onClick={() => { setKonfirmasiHapus(null); setGalat(null); }}
+                onClick={() => { setKonfirmasiHapus(null); setGalat(null); setAlasanHapus(""); }}
                 className="text-[13px]">Batal</Button>
               <Button type="button" variant="danger" busy={!!sibuk}
-                onClick={() => void hapus(konfirmasiHapus)}
+                onClick={() => void hapus(konfirmasiHapus, alasanHapus)}
                 className="text-[13px]">{sibuk ? "Menghapus…" : "Hapus bukti"}</Button>
             </div>
           </section>

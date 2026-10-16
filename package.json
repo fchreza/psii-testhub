@@ -6,8 +6,10 @@
     "dev": "next dev -p 3200",
     "build": "next build",
     "start": "next start -p 3200",
+    "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "migrasi": "tsx --env-file=.env.local scripts/migrasi.ts",
+    "rekonsiliasi-bukti": "tsx --env-file=.env.local scripts/rekonsiliasi-bukti.ts",
     "impor": "tsx --env-file=.env.local scripts/impor-xlsx.ts",
     "sandi": "tsx --env-file=.env.local scripts/sandi.ts",
     "akun": "tsx --env-file=.env.local scripts/akun-pertama.ts"
@@ -23,6 +25,7 @@
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.4",
     "@types/react-dom": "^19.0.2",
