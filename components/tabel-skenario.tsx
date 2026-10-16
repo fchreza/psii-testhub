@@ -7,6 +7,7 @@ import { PanelSkenario } from "./panel-skenario";
 import { Spinner } from "@/components/indikator-proses";
 import { useFocusTrap } from "@/components/use-focus-trap";
 import { Button, Feedback, Input, Select, Textarea } from "@/components/ui";
+import { daftarSamaReferensi } from "@/lib/lembar-skenario-state";
 
 export type Skenario = {
   id: string; kode: string; fase: string; judul: string;
@@ -42,6 +43,7 @@ export function TabelSkenario({
 }) {
   const [data, setData] = useState<Skenario[]>(skenarioAwal);
   const dataRef = useRef<Skenario[]>(skenarioAwal);
+  const sumberServer = useRef({ projectId, fase, skenario: skenarioAwal });
   const antreanSimpan = useRef(new Map<string, Promise<boolean>>());
   const barisMutasiAktif = useRef(new Set<string>());
   const [barisSibuk, setBarisSibuk] = useState<Set<string>>(() => new Set());
@@ -61,6 +63,10 @@ export function TabelSkenario({
   });
 
   useEffect(() => {
+    const sebelumnya = sumberServer.current;
+    if (sebelumnya.projectId === projectId && sebelumnya.fase === fase
+      && daftarSamaReferensi(sebelumnya.skenario, skenarioAwal)) return;
+    sumberServer.current = { projectId, fase, skenario: skenarioAwal };
     dataRef.current = skenarioAwal;
     setData(skenarioAwal);
   }, [projectId, fase, skenarioAwal]);
