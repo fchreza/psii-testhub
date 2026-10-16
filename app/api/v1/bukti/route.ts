@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { klienMentah } from "@/db";
-import { wajibMasukApi, bolehAksesProyek, bolehKelolaProyek, bolehUbahEksekusi } from "@/lib/gerbang";
+import { wajibMasukApi, bolehAksesProyek, bolehHapusBukti, bolehUbahEksekusi } from "@/lib/gerbang";
 import {
   urlUnggah, urlLihat, kunciBukti, kunciSementara,
   jenisDikenal, BATAS_BUKTI, JENIS_BUKTI, MASA_URL_UNGGAH_DETIK,
 } from "@/lib/simpanan";
 import { finalisasiIntentUpload, selesaikanPenghapusanBukti } from "@/lib/bukti-operasi";
 import { perluAlasanHapusBuktiTerakhir } from "@/lib/validasi-bukti";
+import { pathKunciHapusSkenario } from "@/lib/keamanan-hapus-skenario";
 
 export const dynamic = "force-dynamic";
 
@@ -33,8 +34,8 @@ export async function POST(req: Request) {
   if (isi.aksi !== "daftar" && !bolehUbahEksekusi(saya.peran)) {
     return NextResponse.json({ pesan: "Peran Pimpinan hanya dapat melihat." }, { status: 403 });
   }
-  if (isi.aksi === "hapus" && !bolehKelolaProyek(saya.peran)) {
-    return NextResponse.json({ pesan: "Hanya Admin atau Internal PSII yang dapat menghapus bukti." }, { status: 403 });
+  if (isi.aksi === "hapus" && !bolehHapusBukti(saya.peran)) {
+    return NextResponse.json({ pesan: "Peran ini tidak dapat menghapus bukti." }, { status: 403 });
   }
 
   try {
@@ -55,6 +56,11 @@ export async function POST(req: Request) {
           `SELECT id FROM th_scenarios WHERE id = $1::uuid AND project_id = $2 FOR UPDATE`, [scenarioId, projectId],
         )) as unknown as { id: string }[];
         if (!skenario) return { status: "skenario_tidak_ada" as const };
+        const [penghapusan] = (await tx.unsafe(
+          `SELECT 1 AS ada FROM th_evidence WHERE scenario_id = $1::uuid AND path = $2 AND status = 'DELETE_PENDING' LIMIT 1`,
+          [scenarioId, pathKunciHapusSkenario(scenarioId)],
+        )) as unknown as { ada: number }[];
+        if (penghapusan) return { status: "penghapusan_pending" as const };
 
         let [intent] = (await tx.unsafe(
           `INSERT INTO th_evidence_uploads
@@ -82,6 +88,9 @@ export async function POST(req: Request) {
       });
       if (hasilIntent.status === "skenario_tidak_ada") {
         return NextResponse.json({ pesan: "Skenario tidak ada di proyek ini." }, { status: 404 });
+      }
+      if (hasilIntent.status === "penghapusan_pending") {
+        return NextResponse.json({ pesan: "Skenario sedang dibersihkan Admin; unggahan baru ditutup sementara." }, { status: 409 });
       }
       if (hasilIntent.status === "gagal") {
         return NextResponse.json({ pesan: "Intent unggah tidak dapat dibuat." }, { status: 500 });
@@ -163,6 +172,11 @@ export async function POST(req: Request) {
           [projectId, evidenceId],
         )) as unknown as { id: string; status: string; catatan_tindak_lanjut: string | null }[];
         if (!skenario) return { status: "missing" as const };
+        const [penghapusanSkenario] = (await tx.unsafe(
+          `SELECT 1 AS ada FROM th_evidence WHERE scenario_id = $1::uuid AND path = $2 AND status = 'DELETE_PENDING' LIMIT 1`,
+          [skenario.id, pathKunciHapusSkenario(skenario.id)],
+        )) as unknown as { ada: number }[];
+        if (penghapusanSkenario) return { status: "scenario_delete_pending" as const };
         const [bukti] = (await tx.unsafe(
           `SELECT id, path, nama_asli, status FROM th_evidence
            WHERE id = $1::uuid AND scenario_id = $2::uuid FOR UPDATE`, [evidenceId, skenario.id],
@@ -200,6 +214,9 @@ export async function POST(req: Request) {
       });
 
       if (hasilHapus.status === "missing") return NextResponse.json({ pesan: "Bukti tidak ditemukan." }, { status: 404 });
+      if (hasilHapus.status === "scenario_delete_pending") {
+        return NextResponse.json({ pesan: "Skenario sedang dibersihkan Admin; penghapusan bukti ditutup sementara." }, { status: 409 });
+      }
       if (hasilHapus.status === "reason") {
         return NextResponse.json({ pesan: "Bukti terakhir pada skenario Gagal/Tertunda tidak dapat dihapus tanpa alasan atau catatan tindak lanjut." }, { status: 400 });
       }

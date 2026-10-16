@@ -22,11 +22,13 @@ type Props = {
   sayaId: string;
   bolehUbah: boolean;
   bolehKelolaSkenario: boolean;
+  bolehHapusBukti: boolean;
+  bolehAdminHapusSkenario: boolean;
 };
 
 export function AreaSkenarioProyek({
   projectId, fase, faseTersedia, skenarioAwal, statistikAwal, modul, orang, sayaId,
-  bolehUbah, bolehKelolaSkenario,
+  bolehUbah, bolehKelolaSkenario, bolehHapusBukti, bolehAdminHapusSkenario,
 }: Props) {
   const [skenario, setSkenario] = useState(skenarioAwal);
   const [statistik, setStatistik] = useState(statistikAwal);
@@ -234,6 +236,8 @@ export function AreaSkenarioProyek({
             sayaId={sayaId}
             bolehUbah={bolehUbah}
             bolehKelolaSkenario={bolehKelolaSkenario}
+            bolehHapusBukti={bolehHapusBukti}
+            bolehAdminHapusSkenario={bolehAdminHapusSkenario}
             onDataMutasi={jadwalkanRefresh}
             onDraftChange={setDrafAktif}
           />

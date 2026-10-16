@@ -56,9 +56,9 @@ function bentukDraf(s: Skenario): DrafSkenario {
  * menutup penuh — dan itu memang yang diinginkan di layar kecil.
  */
 export function PanelSkenario({
-  skenario, projectId, bolehUbah, bolehKelolaSkenario, onTutup, onUbah, isDraft, onDataMutasi, onDraftChange,
+  skenario, projectId, bolehUbah, bolehKelolaSkenario, bolehHapusBukti, onTutup, onUbah, isDraft, onDataMutasi, onDraftChange,
 }: {
-  skenario: Skenario; projectId: string; bolehUbah: boolean; bolehKelolaSkenario: boolean;
+  skenario: Skenario; projectId: string; bolehUbah: boolean; bolehKelolaSkenario: boolean; bolehHapusBukti: boolean;
   onTutup: () => void; onUbah: (tambalan: Partial<Skenario>) => Promise<boolean>;
   isDraft: boolean; onDataMutasi?: () => void; onDraftChange?: (active: boolean) => void;
 }) {
@@ -397,7 +397,7 @@ export function PanelSkenario({
           </Bagian>
 
           <section className="rounded-xl border border-garis bg-kartu p-3.5 shadow-xs shadow-tinta/3">
-            <BuktiSkenario projectId={projectId} scenarioId={skenario.id} bolehUbah={bolehUbah} bolehHapus={bolehKelolaSkenario}
+            <BuktiSkenario projectId={projectId} scenarioId={skenario.id} bolehUbah={bolehUbah} bolehHapus={bolehHapusBukti}
               onDataMutasi={onDataMutasi} />
           </section>
 

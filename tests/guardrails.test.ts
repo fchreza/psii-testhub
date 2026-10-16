@@ -2,14 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   PERAN_AKUN, internal, bolehAksesProyekPeran, bolehKelolaPengguna,
-  bolehKelolaProyek, bolehKelolaSkenario, bolehUbahEksekusi, bolehUbahKolomSkenario,
+  bolehKelolaProyek, bolehHapusBukti, bolehLewatiGuardHapusSkenario,
+  bolehKelolaSkenario, bolehUbahEksekusi, bolehUbahKolomSkenario,
 } from "../lib/aturan-peran";
 import {
   originSama, validasiMetadataObjek, perluAlasanHapusBuktiTerakhir,
   versiMasihAktual, enkodeKursorRiwayat, parseKursorRiwayat,
 } from "../lib/validasi-bukti";
 import { finalisasiUpload } from "../lib/alur-bukti";
-import { sebabBlokirHapusSkenario } from "../lib/keamanan-hapus-skenario";
+import { sebabBlokirHapusSkenario, sebabTundaHapusAdmin, pathKunciHapusSkenario, PREFIX_KUNCI_HAPUS_SKENARIO } from "../lib/keamanan-hapus-skenario";
 
 test("matriks akses: internal melihat portofolio, tester dibatasi penugasan", () => {
   const portofolio = new Set(["ADMIN", "PIMPINAN", "INTERNAL_PSII"]);
@@ -21,6 +22,8 @@ test("matriks akses: internal melihat portofolio, tester dibatasi penugasan", ()
     assert.equal(bolehKelolaPengguna(role), role === "ADMIN", `${role}: users`);
     assert.equal(bolehKelolaProyek(role), pengelola.has(role), `${role}: projects`);
     assert.equal(bolehKelolaSkenario(role), pengelola.has(role), `${role}: scenarios`);
+    assert.equal(bolehHapusBukti(role), role !== "PIMPINAN", `${role}: delete evidence`);
+    assert.equal(bolehLewatiGuardHapusSkenario(role), role === "ADMIN", `${role}: scenario evidence override`);
     assert.equal(bolehUbahEksekusi(role), role !== "PIMPINAN", `${role}: execution`);
   }
 });
@@ -47,6 +50,15 @@ test("penghapusan skenario hanya untuk Admin/Internal PSII dan memblokir jejak b
   assert.equal(sebabBlokirHapusSkenario(1, 0), "bukti", "bukti aktif maupun tombstone tetap terlindungi");
   assert.equal(sebabBlokirHapusSkenario(0, 1), "unggahan", "intent upload tidak ikut terhapus lewat cascade");
   assert.equal(sebabBlokirHapusSkenario(1, 1), "bukti");
+});
+
+test("Admin menunggu intent upload dan URL bertanda tangan benar-benar tidak aktif", () => {
+  const sekarang = Date.parse("2026-10-16T07:00:00.000Z");
+  assert.equal(sebabTundaHapusAdmin([], sekarang), null);
+  assert.equal(sebabTundaHapusAdmin([{ status: "UPLOADING", expiresAt: "2026-10-16T06:00:00.000Z" }], sekarang), "unggahan");
+  assert.equal(sebabTundaHapusAdmin([{ status: "COMPLETED", expiresAt: "2026-10-16T07:00:10.000Z" }], sekarang), "url_aktif");
+  assert.equal(sebabTundaHapusAdmin([{ status: "COMPLETED", expiresAt: "2026-10-16T06:59:00.000Z" }], sekarang), null);
+  assert.equal(pathKunciHapusSkenario("synthetic-id"), `${PREFIX_KUNCI_HAPUS_SKENARIO}synthetic-id`);
 });
 
 test("Origin hanya menerima origin yang sama persis dan menolak nilai hilang/null", () => {

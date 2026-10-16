@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { klienMentah } from "@/db";
 import { Nav } from "@/components/nav";
-import { wajibMasuk, bolehAksesProyek, bolehKelolaProyek, bolehUbahEksekusi } from "@/lib/gerbang";
+import { wajibMasuk, bolehAksesProyek, bolehKelolaProyek, bolehHapusBukti, bolehLewatiGuardHapusSkenario, bolehUbahEksekusi } from "@/lib/gerbang";
 import { tanggalID } from "@/lib/waktu";
 import type { Skenario, Modul, Orang } from "@/components/tabel-skenario";
 import { AreaSkenarioProyek } from "@/components/area-skenario-proyek";
@@ -50,6 +50,8 @@ export default async function HalamanProyek({
 
   const kelolaProyek = bolehKelolaProyek(saya.peran);
   const bolehUbah = bolehUbahEksekusi(saya.peran);
+  const bolehHapusBuktiDiProyek = bolehHapusBukti(saya.peran);
+  const bolehAdminHapusSkenario = bolehLewatiGuardHapusSkenario(saya.peran);
 
   const jenisPengujian = p.jenis_pengujian;
   const faseTersedia = faseUntukProyek(jenisPengujian);
@@ -208,6 +210,8 @@ export default async function HalamanProyek({
           sayaId={saya.id}
           bolehUbah={bolehUbah}
           bolehKelolaSkenario={kelolaProyek}
+          bolehHapusBukti={bolehHapusBuktiDiProyek}
+          bolehAdminHapusSkenario={bolehAdminHapusSkenario}
         />
       </main>
     </>
