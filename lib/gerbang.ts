@@ -5,9 +5,9 @@ import { sesiSekarang } from "@/lib/sesi";
 import { internal, bolehAksesProyekPeran, bolehKelolaPengguna, type Peran } from "@/lib/aturan-peran";
 export {
   PERAN_AKUN, PERAN_PENGUJI, internal, bolehKelolaPengguna,
-  bolehKelolaProyek, bolehUbahEksekusi, bolehKelolaSkenario, bolehAksesProyekPeran,
+  bolehKelolaProyek, bolehUbahEksekusi, bolehKelolaSkenario, bolehUbahKolomSkenario, bolehAksesProyekPeran,
 } from "@/lib/aturan-peran";
-export type { Peran } from "@/lib/aturan-peran";
+export type { Peran, KolomSkenario } from "@/lib/aturan-peran";
 
 export type Pengguna = {
   id: string;

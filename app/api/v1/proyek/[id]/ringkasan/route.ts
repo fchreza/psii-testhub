@@ -84,9 +84,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       tertunda: number;
       belum: number;
     }[];
+    const modul = (await klienMentah.unsafe(
+      `SELECT id::text AS id, kode, nama, urutan
+       FROM th_modules WHERE project_id = $1 ORDER BY urutan, kode`, [id],
+    )) as unknown as { id: string; kode: string; nama: string; urutan: number }[];
 
     return NextResponse.json({
       skenario: ringkasan?.skenario ?? [],
+      modul,
       statistik: {
         total: Number(ringkasan?.total ?? 0),
         lulus: Number(ringkasan?.lulus ?? 0),

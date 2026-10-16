@@ -31,10 +31,10 @@ const STATUS_PILIHAN = ["PENDING","PASS","FAIL","BLOCKED"];
  * yang terjadi pada spreadsheet di kantor (10 dari 42 skenario tidak terisi).
  */
 export function TabelSkenario({
-  projectId, fase, skenarioAwal, modul, orang, sayaId, bolehUbah, bolehKelolaSkenario, onDataMutasi, onDraftChange,
+  projectId, fase, skenarioAwal, modul, moduleIdDefault, orang, sayaId, bolehUbah, bolehKelolaSkenario, onDataMutasi, onDraftChange,
 }: {
   projectId: string; fase: string; skenarioAwal: Skenario[];
-  modul: Modul[]; orang: Orang[]; sayaId: string; bolehUbah: boolean; bolehKelolaSkenario: boolean;
+  modul: Modul[]; moduleIdDefault: string | null; orang: Orang[]; sayaId: string; bolehUbah: boolean; bolehKelolaSkenario: boolean;
   onDataMutasi?: () => void;
   onDraftChange?: (active: boolean) => void;
 }) {
@@ -49,7 +49,7 @@ export function TabelSkenario({
   const hapusAktif = useRef(new Set<string>());
   const [konfirmasiHapus, setKonfirmasiHapus] = useState<Skenario | null>(null);
   const [hapusGalat, setHapusGalat] = useState<string | null>(null);
-  const [saring, setSaring] = useState({ status: "", modul: "", penguji: "", cari: "" });
+  const [saring, setSaring] = useState({ status: "", penguji: "", cari: "" });
   // Skenario yang panelnya sedang terbuka. Disimpan sebagai ID, bukan objeknya:
   // objek yang disimpan akan basi begitu datanya diubah di tempat.
   const [bukaPanel, setBukaPanel] = useState<string | null>(null);
@@ -61,6 +61,10 @@ export function TabelSkenario({
     dataRef.current = skenarioAwal;
     setData(skenarioAwal);
   }, [projectId, fase, skenarioAwal]);
+
+  useEffect(() => {
+    setSaring({ status: "", penguji: "", cari: "" });
+  }, [projectId, fase, moduleIdDefault]);
 
   const perbaruiData = (ubahData: (baris: Skenario[]) => Skenario[]) => {
     const berikutnya = ubahData(dataRef.current);
@@ -232,7 +236,6 @@ export function TabelSkenario({
   // ---- penyaringan ----
   const tersaring = data.filter((s) => {
     if (saring.status && s.status !== saring.status) return false;
-    if (saring.modul && s.module_id !== saring.modul) return false;
     if (saring.penguji && s.penguji_id !== saring.penguji) return false;
     if (saring.cari.trim()) {
       const q = saring.cari.trim().toLowerCase();
@@ -251,7 +254,7 @@ export function TabelSkenario({
         .filter((k) => k.baris.length > 0)
     : [{ modul: null as Modul | null, baris: tersaring }];
 
-  const adaFilterAktif = Boolean(saring.status || saring.modul || saring.penguji || saring.cari.trim());
+  const adaFilterAktif = Boolean(saring.status || saring.penguji || saring.cari.trim());
   const terpilih = data.find((x) => x.id === bukaPanel) ?? null;
 
   return (
@@ -268,18 +271,6 @@ export function TabelSkenario({
             {STATUS_PILIHAN.map((x) => <option key={x} value={x}>{labelStatus(x)}</option>)}
           </Select>
         </div>
-
-        {berModul && (
-          <div>
-            <label htmlFor="f-modul" className="mb-1 block text-[12.5px] font-medium text-tinta-3">Modul</label>
-            <Select id="f-modul" value={saring.modul} wrapClassName="w-full max-w-[220px]"
-              onChange={(e) => setSaring((s) => ({ ...s, modul: e.target.value }))}
-              className="h-9 py-1 text-[13px]">
-              <option value="">Semua</option>
-              {modul.map((m) => <option key={m.id} value={m.id}>{m.kode}. {m.nama}</option>)}
-            </Select>
-          </div>
-        )}
 
         <div>
           <label htmlFor="f-penguji" className="mb-1 block text-[12.5px] font-medium text-tinta-3">Penguji</label>
@@ -316,9 +307,9 @@ export function TabelSkenario({
         </p>
       )}
 
-      {bolehKelolaSkenario && data.length > 0 && (
+      {bolehKelolaSkenario && moduleIdDefault && data.length > 0 && (
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <Button type="button" variant="primary" onClick={() => tambah(modul[0]?.id ?? null)}
+          <Button type="button" variant="primary" onClick={() => tambah(moduleIdDefault)}
             className="sentuh w-full px-4 text-[14px] shadow-sm hover:bg-[#0b5ed7] disabled:hover:bg-aksi focus-visible:ring-aksi sm:w-auto">
             {data.some((x) => x.id.startsWith("draft:")) ? (
               <>
@@ -337,7 +328,7 @@ export function TabelSkenario({
             )}
           </Button>
           <p className="text-[13px] text-tinta-3">
-            {data.length} skenario {fase} · klik sel untuk mengubah, klik judul untuk membuka detail
+            {data.length} skenario {fase} · judul berikon membuka panel; kolom teks bertanda pensil dapat diedit
           </p>
         </div>
       )}
@@ -347,7 +338,7 @@ export function TabelSkenario({
           <p className="text-[15px] font-medium text-tinta">Tidak ada skenario yang cocok dengan filter</p>
           <p className="mt-1 text-[13.5px] text-tinta-2">Coba ubah kata pencarian atau reset semua filter.</p>
           {adaFilterAktif && <Button type="button" variant="secondary"
-            onClick={() => setSaring({ status: "", modul: "", penguji: "", cari: "" })}
+            onClick={() => setSaring({ status: "", penguji: "", cari: "" })}
             className="mt-4 min-h-9 px-3 py-1.5 text-[13px]">Reset filter</Button>}
         </div>
       ) : data.length === 0 ? (
@@ -357,8 +348,8 @@ export function TabelSkenario({
             Tambahkan skenario satu per satu, atau impor dari berkas .xlsx lewat
             skrip <code className="rounded-sm bg-kanvas px-1">npm run impor</code>.
           </p>
-          {bolehUbah && (
-            <Button type="button" variant="primary" onClick={() => tambah(modul[0]?.id ?? null)}
+          {bolehKelolaSkenario && moduleIdDefault && (
+            <Button type="button" variant="primary" onClick={() => tambah(moduleIdDefault)}
               className="sentuh mt-4 px-4 text-[14px] shadow-sm hover:bg-[#0b5ed7] disabled:hover:bg-aksi focus-visible:ring-aksi">
               <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-4 w-4">
                 <path d="M10 3.75v12.5M3.75 10h12.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
@@ -408,8 +399,12 @@ export function TabelSkenario({
                                 buka dan klik-untuk-ketik tidak berebut tempat yang sama. */}
                             <button type="button" onClick={() => setBukaPanel(s.id)}
                               aria-label={`Buka ${s.id.startsWith("draft:") ? "draf skenario baru" : `skenario ${s.kode}`}`}
-                              className="block w-full whitespace-pre-wrap wrap-break-word rounded-sm px-1 py-0.5 text-left font-medium text-tinta hover:bg-kanvas">
-                              {s.judul || (s.id.startsWith("draft:") ? "Skenario baru" : "—")}
+                              title="Klik untuk membuka panel detail skenario"
+                              className="group flex w-full cursor-pointer items-start justify-between gap-2 rounded-md border border-transparent px-2 py-1.5 text-left font-medium text-tinta transition-colors hover:border-aksi/20 hover:bg-aksi-lembut/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-aksi">
+                              <span className="min-w-0 whitespace-pre-wrap wrap-break-word">{s.judul || (s.id.startsWith("draft:") ? "Skenario baru" : "—")}</span>
+                              <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="mt-0.5 h-4 w-4 shrink-0 text-tinta-3 transition-colors group-hover:text-aksi">
+                                <path d="M7.5 4.75h7.75v7.75M15.1 4.9 6.5 13.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" />
+                              </svg>
                             </button>
                           </td>
 
@@ -456,7 +451,7 @@ export function TabelSkenario({
                           </td>
 
                           <td className="px-3 py-2">
-                            <Select value={s.status} disabled={!bolehUbah || barisSibuk.has(s.id)} aria-busy={barisSibuk.has(s.id)}
+                            <Select value={s.status} disabled={!bolehKelolaSkenario || barisSibuk.has(s.id)} aria-busy={barisSibuk.has(s.id)}
                               onChange={(e) => void simpan(s.id, { status: e.target.value })}
                               aria-label={`Status ${s.kode}`}
                               wrapClassName="max-w-[145px]" className={cn("h-8 rounded-md py-1 pl-2 pr-7 text-[12.5px] font-medium shadow-none", st.kelas)}>
@@ -634,12 +629,20 @@ function TeksSel({
         disabled={disabled}
         onClick={() => { batalRef.current = false; setDraf(nilai); setBuka(true); }}
         aria-label={`Edit ${ariaLabel}`}
-        className={cn("block w-full whitespace-pre-wrap wrap-break-word rounded-sm px-1 py-0.5 text-left hover:bg-kanvas focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-aksi",
+        title={`Klik untuk mengedit ${ariaLabel}`}
+        className={cn("group flex w-full cursor-text items-start justify-between gap-2 rounded-md border border-dashed border-garis/80 bg-transparent px-2 py-1.5 text-left transition-colors hover:border-aksi/50 hover:bg-aksi-lembut/25 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-aksi disabled:cursor-not-allowed disabled:opacity-50",
           tebal ? "font-medium text-tinta" : "text-tinta-2",
           !nilai && "text-tinta-3",
-          wajib && !nilai && "ring-1 ring-gagal/40",
+          wajib && !nilai && "border-gagal/40",
         )}>
-        {nilai || (wajib ? "Wajib diisi untuk status Gagal/Tertunda" : "Kosong")}
+        <span className="min-w-0 flex-1 whitespace-pre-wrap wrap-break-word">
+          {nilai || (wajib ? "Wajib diisi untuk status Gagal/Tertunda" : "Klik untuk mengisi")}
+        </span>
+        <span aria-hidden="true" className="mt-0.5 shrink-0 text-tinta-3 transition-colors group-hover:text-aksi">
+          <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5">
+            <path d="m12.9 4.1 3 3M4 16l3.3-.7 8.9-8.9a1.6 1.6 0 0 0-2.3-2.3L5 13 4 16Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.4" />
+          </svg>
+        </span>
       </button>
     );
   }

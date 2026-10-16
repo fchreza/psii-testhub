@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { klienMentah } from "@/db";
 import {
-  wajibMasukApi, bolehAksesProyek, bolehKelolaSkenario, bolehUbahEksekusi,
+  wajibMasukApi, bolehAksesProyek, bolehKelolaSkenario, bolehUbahEksekusi, bolehUbahKolomSkenario,
 } from "@/lib/gerbang";
 import { faseUntukProyek, type FasePengujian } from "@/lib/fase-proyek";
 import { versiMasihAktual } from "@/lib/validasi-bukti";
@@ -46,6 +46,19 @@ export async function POST(req: Request) {
   }
   if (["tambah", "hapus"].includes(isi.aksi) && !bolehKelolaSkenario(saya.peran)) {
     return NextResponse.json({ pesan: "Hanya Admin atau Internal PSII yang dapat membuat atau menghapus skenario." }, { status: 403 });
+  }
+  if (isi.aksi === "ubah") {
+    const kolomIsi = [
+      ["judul", "judul"], ["status", "status"], ["langkahPengujian", "langkahPengujian"],
+      ["hasilDiharapkan", "hasilDiharapkan"], ["hasilAktual", "hasilAktual"],
+      ["catatanTindakLanjut", "catatanTindakLanjut"], ["pengujiId", "pengujiId"],
+      ["moduleId", "moduleId"], ["siapRetest", "siapRetest"],
+    ] as const;
+    const tidakDiizinkan = kolomIsi.some(([field, kolom]) =>
+      isi[field] !== undefined && !bolehUbahKolomSkenario(saya.peran, kolom));
+    if (tidakDiizinkan) {
+      return NextResponse.json({ pesan: "Akun penguji hanya dapat mengubah hasil aktual dan catatan tindak lanjut." }, { status: 403 });
+    }
   }
 
   try {
@@ -154,9 +167,10 @@ export async function POST(req: Request) {
       }[];
       if (!lama) return NextResponse.json({ pesan: "Skenario tidak ditemukan" }, { status: 404 });
 
-      const kolomMaster = ["judul", "langkahPengujian", "hasilDiharapkan", "pengujiId", "moduleId", "siapRetest"] as const;
-      if (!bolehKelolaSkenario(saya.peran) && kolomMaster.some((k) => isi[k] !== undefined)) {
-        return NextResponse.json({ pesan: "Akun penguji hanya dapat mengubah status, hasil aktual, dan catatan tindak lanjut." }, { status: 403 });
+      const kolomKhususPengelola = ["pengujiId", "moduleId", "siapRetest"] as const;
+      if (kolomKhususPengelola.some((kolom) => isi[kolom] !== undefined
+        && !bolehUbahKolomSkenario(saya.peran, kolom))) {
+        return NextResponse.json({ pesan: "Hanya Admin atau Internal PSII yang dapat mengubah penugasan penguji, lembar modul, atau status siap retest." }, { status: 403 });
       }
 
       /*
