@@ -104,7 +104,7 @@ export function TombolProyekBaru({ pic }: { pic: { id: string; nama: string }[] 
             {galat && <Feedback kind="error">{galat}</Feedback>}
           </div>
 
-          <footer className="flex justify-end gap-2 border-t border-garis bg-kartu/95 px-5 py-4 backdrop-blur sm:px-7">
+          <footer className="flex justify-end gap-2 border-t border-garis bg-kartu/95 px-5 py-4 backdrop-blur-sm sm:px-7">
             <Button onClick={tutup} disabled={sibuk}>Batal</Button>
             <Button type="submit" variant="primary" busy={sibuk}>
               {sibuk ? "Menyimpan…" : "Simpan proyek"}

@@ -36,7 +36,7 @@ export default async function HalamanAdmin() {
             ["Proyek", ringkas.proyek],
             ["Penugasan proyek", ringkas.penugasan],
           ] as [string, number][]).map(([label, nilai]) => (
-            <div key={label} className="rounded-xl border border-garis bg-kartu p-4 shadow-sm shadow-tinta/[0.03]">
+            <div key={label} className="rounded-xl border border-garis bg-kartu p-4 shadow-xs shadow-tinta/3">
               <p className="text-[12px] font-medium uppercase tracking-wide text-tinta-3">{label}</p>
               <p className="tabular mt-2 text-3xl font-semibold tracking-tight text-tinta">{nilai}</p>
             </div>
@@ -44,7 +44,7 @@ export default async function HalamanAdmin() {
         </section>
 
         <section className="grid gap-4 md:grid-cols-2">
-          <Link href="/dashboard/admin/pengguna" className="group rounded-xl border border-garis bg-kartu p-5 shadow-sm shadow-tinta/[0.03] transition-colors hover:border-aksi/50 hover:bg-aksi/[0.02] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aksi">
+          <Link href="/dashboard/admin/pengguna" className="group rounded-xl border border-garis bg-kartu p-5 shadow-xs shadow-tinta/3 transition-colors hover:border-aksi/50 hover:bg-aksi/2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aksi">
             <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-aksi-lembut text-aksi" aria-hidden="true">
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2m14-11a4 4 0 0 1 0 8m-8-8a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm6-3h6m-3-3v6" />
@@ -59,7 +59,7 @@ export default async function HalamanAdmin() {
             <span className="mt-4 inline-flex items-center gap-1 text-[13px] font-semibold text-aksi">{saya.peran === "ADMIN" ? "Buka pengelolaan" : "Buka daftar"} <span aria-hidden="true">→</span></span>
           </Link>
 
-          <div className="rounded-xl border border-garis bg-kartu p-5 shadow-sm shadow-tinta/[0.03]">
+          <div className="rounded-xl border border-garis bg-kartu p-5 shadow-xs shadow-tinta/3">
             <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-kanvas text-tinta-2" aria-hidden="true">
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Zm0 0 8 4.5m8-4.5-8 4.5m0 0V21m-4-13 8 4.5" />

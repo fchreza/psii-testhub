@@ -200,7 +200,7 @@ export function AreaSkenarioProyek({
         onDraftChange={setDrafAktif}
       />
       {tautanTertunda && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-tinta/50 p-4 backdrop-blur-[2px]">
+        <div className="fixed inset-0 z-80 flex items-center justify-center bg-tinta/50 p-4 backdrop-blur-[2px]">
           <section ref={dialogNavigasiRef} tabIndex={-1} role="alertdialog" aria-modal="true" aria-labelledby="judul-tinggalkan-draf"
             className="w-full max-w-sm rounded-xl border border-garis bg-kartu p-5 shadow-2xl">
             <h2 id="judul-tinggalkan-draf" className="text-[16px] font-semibold text-tinta">Tinggalkan draf?</h2>

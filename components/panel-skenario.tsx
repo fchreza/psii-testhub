@@ -350,7 +350,7 @@ export function PanelSkenario({
                   ))}
                 </Select>
               ) : (
-                <span className={cn("rounded px-2 py-1 text-[13.5px] font-medium", st.kelas)}>
+                <span className={cn("rounded-sm px-2 py-1 text-[13.5px] font-medium", st.kelas)}>
                   {labelStatus(draf.status)}
                 </span>
               )}
@@ -458,7 +458,7 @@ export function PanelSkenario({
           </>
           )}
           {(bolehUbah || bolehKelolaSkenario) && (
-            <div className="sticky bottom-0 -mx-6 border-t border-garis bg-kartu/95 px-6 py-3 backdrop-blur">
+            <div className="sticky bottom-0 -mx-6 border-t border-garis bg-kartu/95 px-6 py-3 backdrop-blur-sm">
               {simpanInfo && <Feedback kind={simpanInfo.jenis === "galat" ? "error" : "success"} className="mb-2">{simpanInfo.teks}</Feedback>}
               <div className="flex justify-end gap-2">
                 <Button type="button" onClick={batalkanSemua} disabled={!adaDrafKotor || simpanSibuk} className="text-[13px]">
@@ -474,7 +474,7 @@ export function PanelSkenario({
         </div>
       </aside>
       {konfirmasiTutup && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-tinta/50 p-4 backdrop-blur-[2px]">
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-tinta/50 p-4 backdrop-blur-[2px]">
           <section id="konfirmasi-tutup-skenario" tabIndex={-1} role="alertdialog" aria-labelledby="judul-konfirmasi-tutup-skenario"
             className="w-full max-w-sm rounded-xl border border-garis bg-kartu p-5 shadow-2xl">
             <h2 id="judul-konfirmasi-tutup-skenario" className="text-[16px] font-semibold text-tinta">Buang perubahan?</h2>
@@ -539,7 +539,7 @@ function Teks({
   if (!buka) {
     return (
       <button type="button" onClick={() => setBuka(true)}
-        className={cn("block w-full whitespace-pre-wrap rounded px-2 py-1.5 text-left text-[13.5px] leading-relaxed hover:bg-kanvas",
+        className={cn("block w-full whitespace-pre-wrap rounded-sm px-2 py-1.5 text-left text-[13.5px] leading-relaxed hover:bg-kanvas",
           draf ? "text-tinta-2" : "text-tinta-3",
           berubah && "text-aksi",
           sorot && !draf && "ring-1 ring-gagal/40")}>

@@ -254,7 +254,7 @@ export default async function HalamanDashboard() {
                       <div key={`${m.project_id}-${m.kode}`}>
                         <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
                           <p className="text-[13.5px] text-tinta">
-                            <span className="tabular mr-1.5 rounded bg-kanvas px-1.5 py-0.5 text-[12px] text-tinta-2">
+                            <span className="tabular mr-1.5 rounded-sm bg-kanvas px-1.5 py-0.5 text-[12px] text-tinta-2">
                               {m.kode}
                             </span>
                             {m.nama}
@@ -283,7 +283,7 @@ export default async function HalamanDashboard() {
                     {([["bg-lulus","Lulus"],["bg-gagal","Gagal"],["bg-tertunda","Tertunda"],["bg-garis-kuat","Belum diuji"]] as [string,string][])
                       .map(([w, l]) => (
                         <span key={l} className="flex items-center gap-1.5">
-                          <span className={cn("h-2.5 w-2.5 rounded-sm", w)} aria-hidden />
+                          <span className={cn("h-2.5 w-2.5 rounded-xs", w)} aria-hidden />
                           {l}
                         </span>
                       ))}
@@ -324,7 +324,7 @@ export default async function HalamanDashboard() {
                               {s.catatan_tindak_lanjut ? ` · ${s.catatan_tindak_lanjut.slice(0, 70)}` : " · belum ada catatan"}
                             </span>
                           </span>
-                          <span className={cn("shrink-0 rounded px-2 py-0.5 text-[12.5px] font-medium", st.kelas)}>
+                          <span className={cn("shrink-0 rounded-sm px-2 py-0.5 text-[12.5px] font-medium", st.kelas)}>
                             {labelStatus(s.status)}
                           </span>
                         </Link>

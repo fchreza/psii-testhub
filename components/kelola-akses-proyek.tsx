@@ -61,7 +61,7 @@ export function KelolaAksesProyek({
   }
 
   return (
-    <section aria-labelledby="akses-proyek" className="mb-5 rounded-xl border border-garis bg-kartu p-4 shadow-sm shadow-tinta/[0.03] sm:p-5">
+    <section aria-labelledby="akses-proyek" className="mb-5 rounded-xl border border-garis bg-kartu p-4 shadow-xs shadow-tinta/3 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[11.5px] font-semibold uppercase tracking-[0.15em] text-aksi">Akses penguji</p>

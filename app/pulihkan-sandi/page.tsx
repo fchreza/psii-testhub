@@ -46,8 +46,8 @@ function FormPemulihan() {
 
   return (
     <main id="konten-utama" tabIndex={-1} className="flex min-h-screen items-center justify-center px-6 py-10">
-      <div className="w-full max-w-[27rem]">
-        <section className="rounded-xl border border-garis bg-kartu p-7 shadow-sm">
+      <div className="w-full max-w-108">
+        <section className="rounded-xl border border-garis bg-kartu p-7 shadow-xs">
           <p className="text-[12px] font-bold uppercase tracking-[0.12em] text-aksi">PSII TestHub</p>
           <h1 className="mt-2 text-[22px] font-bold tracking-tight text-tinta">
             {token ? "Buat sandi baru" : "Pulihkan sandi"}
@@ -70,7 +70,7 @@ function FormPemulihan() {
                   <label htmlFor="email-pemulihan" className="mb-1.5 block text-[14px] font-medium text-tinta">Email</label>
                   <input id="email-pemulihan" type="email" autoComplete="email" required maxLength={160} value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-md border border-garis-kuat px-3 py-2.5 text-[16px] text-tinta outline-none focus:border-aksi focus-visible:ring-2 focus-visible:ring-aksi" />
+                    className="w-full rounded-md border border-garis-kuat px-3 py-2.5 text-[16px] text-tinta outline-hidden focus:border-aksi focus-visible:ring-2 focus-visible:ring-aksi" />
                 </div>
                 {galat && <p role="alert" className="rounded-md border border-gagal bg-gagal-lembut px-3 py-2 text-[13.5px] text-gagal">{galat}</p>}
                 <button type="submit" disabled={sibuk} aria-busy={sibuk}
@@ -90,14 +90,14 @@ function FormPemulihan() {
                 <label htmlFor="sandi-baru" className="mb-1.5 block text-[14px] font-medium text-tinta">Sandi baru</label>
                 <input id="sandi-baru" type="password" autoComplete="new-password" required minLength={12} maxLength={256}
                   value={sandi} onChange={(e) => setSandi(e.target.value)}
-                  className="w-full rounded-md border border-garis-kuat px-3 py-2.5 text-[16px] text-tinta outline-none focus:border-aksi focus-visible:ring-2 focus-visible:ring-aksi" />
+                  className="w-full rounded-md border border-garis-kuat px-3 py-2.5 text-[16px] text-tinta outline-hidden focus:border-aksi focus-visible:ring-2 focus-visible:ring-aksi" />
                 <p className="mt-1 text-[12px] text-tinta-3">Gunakan minimal 12 karakter.</p>
               </div>
               <div>
                 <label htmlFor="konfirmasi-sandi" className="mb-1.5 block text-[14px] font-medium text-tinta">Ulangi sandi baru</label>
                 <input id="konfirmasi-sandi" type="password" autoComplete="new-password" required minLength={12} maxLength={256}
                   value={konfirmasi} onChange={(e) => setKonfirmasi(e.target.value)}
-                  className="w-full rounded-md border border-garis-kuat px-3 py-2.5 text-[16px] text-tinta outline-none focus:border-aksi focus-visible:ring-2 focus-visible:ring-aksi" />
+                  className="w-full rounded-md border border-garis-kuat px-3 py-2.5 text-[16px] text-tinta outline-hidden focus:border-aksi focus-visible:ring-2 focus-visible:ring-aksi" />
               </div>
               {galat && <p role="alert" className="rounded-md border border-gagal bg-gagal-lembut px-3 py-2 text-[13.5px] text-gagal">{galat}</p>}
               <button type="submit" disabled={sibuk} aria-busy={sibuk}

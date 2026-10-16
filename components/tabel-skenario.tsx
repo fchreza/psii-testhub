@@ -329,7 +329,7 @@ export function TabelSkenario({
           <p className="text-[15px] font-medium text-tinta">Belum ada skenario {fase}</p>
           <p className="mx-auto mt-1 max-w-md text-[14px] leading-relaxed text-tinta-2">
             Tambahkan skenario satu per satu, atau impor dari berkas .xlsx lewat
-            skrip <code className="rounded bg-kanvas px-1">npm run impor</code>.
+            skrip <code className="rounded-sm bg-kanvas px-1">npm run impor</code>.
           </p>
           {bolehUbah && (
             <button type="button" onClick={() => tambah(modul[0]?.id ?? null)}
@@ -344,7 +344,7 @@ export function TabelSkenario({
             <section key={k.modul?.id ?? "tanpa"} className="mb-5">
               {k.modul && (
                 <h3 className="mb-1.5 flex items-center gap-2 text-[13.5px] font-semibold text-tinta">
-                  <span className="rounded bg-kanvas px-1.5 py-0.5 text-[12.5px] text-tinta-2">
+                  <span className="rounded-sm bg-kanvas px-1.5 py-0.5 text-[12.5px] text-tinta-2">
                     {k.modul.kode}
                   </span>
                   {k.modul.nama}
@@ -379,7 +379,7 @@ export function TabelSkenario({
                                 buka dan klik-untuk-ketik tidak berebut tempat yang sama. */}
                             <button type="button" onClick={() => setBukaPanel(s.id)}
                               aria-label={`Buka ${s.id.startsWith("draft:") ? "draf skenario baru" : `skenario ${s.kode}`}`}
-                              className="block w-full whitespace-pre-wrap break-words rounded px-1 py-0.5 text-left font-medium text-tinta hover:bg-kanvas">
+                              className="block w-full whitespace-pre-wrap wrap-break-word rounded-sm px-1 py-0.5 text-left font-medium text-tinta hover:bg-kanvas">
                               {s.judul || (s.id.startsWith("draft:") ? "Skenario baru" : "—")}
                             </button>
                           </td>
@@ -416,7 +416,7 @@ export function TabelSkenario({
                               boleh tampak seperti sudah ada. */}
                           <td className="px-3 py-2">
                             <button type="button" onClick={() => setBukaPanel(s.id)}
-                              className="rounded px-1.5 py-0.5 text-[12.5px] font-medium hover:bg-kanvas"
+                              className="rounded-sm px-1.5 py-0.5 text-[12.5px] font-medium hover:bg-kanvas"
                               title="Buka panel untuk mengunggah atau melihat bukti">
                               {s.jumlah_bukti > 0 ? (
                                 <span className="text-aksi">{s.jumlah_bukti} berkas</span>
@@ -438,7 +438,7 @@ export function TabelSkenario({
 
                           <td className="max-w-[260px] px-3 py-2">
                             <button type="button" onClick={() => setBukaPanel(s.id)}
-                              className={cn("block w-full whitespace-pre-wrap break-words rounded px-1 py-0.5 text-left",
+                              className={cn("block w-full whitespace-pre-wrap wrap-break-word rounded-sm px-1 py-0.5 text-left",
                                 s.catatan_tindak_lanjut ? "text-tinta-2" : "text-tinta-3",
                                 // Status Gagal/Tertunda wajib bercatatan (PRD FR-2.5),
                                 // jadi sel ini ditandai saat itu terjadi.
@@ -450,7 +450,7 @@ export function TabelSkenario({
                                   ? "Wajib diisi untuk status Gagal/Tertunda" : "Kosong")}
                             </button>
                             {s.siap_retest && (
-                              <span className="mt-1 inline-block rounded bg-lulus-lembut px-2 py-0.5 text-[12px] font-medium text-lulus">
+                              <span className="mt-1 inline-block rounded-sm bg-lulus-lembut px-2 py-0.5 text-[12px] font-medium text-lulus">
                                 siap diuji ulang
                               </span>
                             )}
@@ -462,7 +462,7 @@ export function TabelSkenario({
                                 aria-label={s.id.startsWith("draft:") ? "Buang draf skenario" : `Hapus ${s.kode}`}
                                 title={s.id.startsWith("draft:") ? "Buang draf" : "Hapus skenario"}
                                 aria-busy={hapusSibuk.has(s.id)}
-                                className="inline-flex items-center gap-1 rounded px-2 py-1 text-[12.5px] text-tinta-3 opacity-0 transition-opacity hover:bg-gagal-lembut hover:text-gagal focus:opacity-100 group-hover:opacity-100">
+                                className="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-[12.5px] text-tinta-3 opacity-0 transition-opacity hover:bg-gagal-lembut hover:text-gagal focus:opacity-100 group-hover:opacity-100">
                                 {hapusSibuk.has(s.id) && <Spinner className="h-3.5 w-3.5" />}
                                 {hapusSibuk.has(s.id) ? "Menghapus…" : s.id.startsWith("draft:") ? "Buang draf" : "Hapus"}
                               </button>
@@ -530,7 +530,7 @@ export function TabelSkenario({
         />
       )}
       {konfirmasiHapus && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-4">
           <button type="button" aria-label="Tutup konfirmasi hapus" disabled={hapusSibuk.has(konfirmasiHapus.id)}
             onClick={() => { setKonfirmasiHapus(null); setHapusGalat(null); }}
             className="absolute inset-0 bg-tinta/45 disabled:cursor-wait" />
@@ -602,7 +602,7 @@ function TeksSel({
 
   if (!bolehUbah) {
     return (
-      <span className={cn("block whitespace-pre-wrap break-words",
+      <span className={cn("block whitespace-pre-wrap wrap-break-word",
         tebal ? "font-medium text-tinta" : "text-tinta-2",
         !nilai && "text-tinta-3")}>
         {nilai || "—"}
@@ -617,7 +617,7 @@ function TeksSel({
         disabled={disabled}
         onClick={() => { batalRef.current = false; setDraf(nilai); setBuka(true); }}
         aria-label={`Edit ${ariaLabel}`}
-        className={cn("block w-full whitespace-pre-wrap break-words rounded px-1 py-0.5 text-left hover:bg-kanvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aksi",
+        className={cn("block w-full whitespace-pre-wrap wrap-break-word rounded-sm px-1 py-0.5 text-left hover:bg-kanvas focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-aksi",
           tebal ? "font-medium text-tinta" : "text-tinta-2",
           !nilai && "text-tinta-3",
           wajib && !nilai && "ring-1 ring-gagal/40",
@@ -640,7 +640,7 @@ function TeksSel({
             if (e.key === "Escape") { e.preventDefault(); batalRef.current = true; setDraf(nilai); tutupDanKembalikanFokus(); }
             if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void simpanDraf(); }
           }}
-          className={cn("min-h-[60px] rounded border-aksi px-1.5 py-1 text-[13.5px] shadow-none", tebal ? "font-medium text-tinta" : "text-tinta-2")}
+          className={cn("min-h-[60px] rounded-sm border-aksi px-1.5 py-1 text-[13.5px] shadow-none", tebal ? "font-medium text-tinta" : "text-tinta-2")}
         />
       ) : (
         <Input autoFocus aria-label={ariaLabel} value={draf} maxLength={20000} disabled={sibuk || disabled}
@@ -649,16 +649,16 @@ function TeksSel({
           if (e.key === "Escape") { e.preventDefault(); batalRef.current = true; setDraf(nilai); tutupDanKembalikanFokus(); }
           if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void simpanDraf(); }
         }}
-          className={cn("h-8 rounded border-aksi px-1.5 py-1 text-[13.5px] shadow-none", tebal ? "font-medium text-tinta" : "text-tinta-2")}
+          className={cn("h-8 rounded-sm border-aksi px-1.5 py-1 text-[13.5px] shadow-none", tebal ? "font-medium text-tinta" : "text-tinta-2")}
         />
       )}
       <div className="mt-1 flex items-center gap-1.5">
         <Button type="button" variant="primary" onClick={() => void simpanDraf()} disabled={disabled || draf === nilai} busy={sibuk}
-          className="min-h-7 rounded px-2 py-1 text-[11.5px]">
+          className="min-h-7 rounded-sm px-2 py-1 text-[11.5px]">
           {sibuk ? "Menyimpan…" : "Simpan"}
         </Button>
         <Button type="button" onClick={() => { batalRef.current = true; setDraf(nilai); tutupDanKembalikanFokus(); }} disabled={sibuk || disabled}
-          className="min-h-7 rounded px-2 py-1 text-[11.5px]">
+          className="min-h-7 rounded-sm px-2 py-1 text-[11.5px]">
           Batal
         </Button>
       </div>

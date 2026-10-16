@@ -147,7 +147,7 @@ export function EditorMetadataProyek({
           <aside ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="judul-editor-metadata"
             className="relative z-10 flex h-full w-full max-w-[680px] flex-col border-l border-garis bg-kartu shadow-2xl">
             <form onSubmit={simpan} className="flex min-h-0 flex-1 flex-col" aria-busy={sibuk}>
-              <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-garis bg-kartu/95 px-5 py-4 backdrop-blur sm:px-7">
+              <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-garis bg-kartu/95 px-5 py-4 backdrop-blur-sm sm:px-7">
                 <div>
                   <h2 id="judul-editor-metadata" className="text-[19px] font-bold tracking-tight text-tinta">Ubah informasi proyek</h2>
                   <p className="mt-1 text-[13px] leading-relaxed text-tinta-3">Sunting informasi yang digunakan pada form proyek.</p>
@@ -238,7 +238,7 @@ export function EditorMetadataProyek({
                 </div>
               )}
 
-              <footer className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-garis bg-kartu/95 px-5 py-4 backdrop-blur sm:px-7">
+              <footer className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-garis bg-kartu/95 px-5 py-4 backdrop-blur-sm sm:px-7">
                 <p className="text-[12px] text-tinta-3">{kotor ? "Ada perubahan yang belum disimpan." : "Belum ada perubahan."}</p>
                 <div className="flex justify-end gap-2">
                   <Button onClick={tutup} disabled={sibuk}>Batal</Button>

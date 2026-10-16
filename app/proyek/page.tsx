@@ -132,7 +132,7 @@ export default async function HalamanProyek() {
                       </td>
                       <td className="px-3 py-2.5 text-tinta-2">{labelJenisPengujian(p.jenis_pengujian)}</td>
                       <td className="px-3 py-2.5">
-                        <span className="rounded bg-kanvas px-2 py-0.5 text-[12.5px] font-medium text-tinta-2">
+                        <span className="rounded-sm bg-kanvas px-2 py-0.5 text-[12.5px] font-medium text-tinta-2">
                           {LABEL_TAHAP[p.tahap] ?? p.tahap}
                         </span>
                       </td>
@@ -156,7 +156,7 @@ export default async function HalamanProyek() {
                       </td>
                       <td className="px-3 py-2.5">
                         {kendala > 0 ? (
-                          <span className="rounded bg-gagal-lembut px-2 py-0.5 text-[12.5px] font-medium text-gagal">
+                          <span className="rounded-sm bg-gagal-lembut px-2 py-0.5 text-[12.5px] font-medium text-gagal">
                             {kendala} perlu tindak lanjut
                           </span>
                         ) : (
@@ -166,7 +166,7 @@ export default async function HalamanProyek() {
                       <td className="px-3 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-1">
                         <Link href={`/proyek/${p.id}`}
-                          className="rounded px-2 py-1 text-[13px] text-aksi hover:bg-aksi-lembut">
+                          className="rounded-sm px-2 py-1 text-[13px] text-aksi hover:bg-aksi-lembut">
                           Buka
                         </Link>
                         {saya.peran === "ADMIN" && <TombolHapusProyek projectId={p.id} nama={p.nama} />}
