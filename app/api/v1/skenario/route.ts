@@ -5,6 +5,7 @@ import {
   wajibMasukApi, bolehAksesProyek, bolehKelolaSkenario, bolehUbahEksekusi,
 } from "@/lib/gerbang";
 import { faseUntukProyek, type FasePengujian } from "@/lib/fase-proyek";
+import { versiMasihAktual } from "@/lib/validasi-bukti";
 
 export const dynamic = "force-dynamic";
 
@@ -172,7 +173,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ pesan: "Versi data skenario wajib disertakan." }, { status: 400 });
       }
       const versi = isi.versi;
-      if (isi.versi !== lama.versi) {
+      if (!versiMasihAktual(isi.versi, lama.versi)) {
         return NextResponse.json({
           pesan: "Data sudah berubah. Periksa nilai terbaru, lalu simpan draf Anda kembali jika memang ingin menggantinya.",
           konflik: true, terbaru: lama,
@@ -205,7 +206,7 @@ export async function POST(req: Request) {
       if (statusBaru === "FAIL" || statusBaru === "BLOCKED") {
         const catatan = (isi.catatanTindakLanjut ?? lama.catatan_tindak_lanjut ?? "").trim();
         const [adaBukti] = (await klienMentah.unsafe(
-          `SELECT count(*)::int AS n FROM th_evidence WHERE scenario_id = $1::uuid`, [scenarioId],
+          `SELECT count(*)::int AS n FROM th_evidence WHERE scenario_id = $1::uuid AND status = 'READY'`, [scenarioId],
         )) as unknown as { n: number }[];
 
         if (!catatan && adaBukti.n === 0) {
@@ -333,7 +334,7 @@ export async function POST(req: Request) {
         )) as unknown as { id: string; kode: string; judul: string }[];
         if (!ada) return { ditemukan: false, bukti: 0 };
         const [n] = (await tx.unsafe(
-          `SELECT count(*)::int AS n FROM th_evidence WHERE scenario_id = $1::uuid`, [scenarioId],
+          `SELECT count(*)::int AS n FROM th_evidence WHERE scenario_id = $1::uuid AND status <> 'DELETED'`, [scenarioId],
         )) as unknown as { n: number }[];
         if (n.n > 0) return { ditemukan: true, bukti: n.n };
         await tx.unsafe(

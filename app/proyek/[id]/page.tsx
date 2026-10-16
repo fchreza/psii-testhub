@@ -88,6 +88,7 @@ export default async function HalamanProyek({
     ? klienMentah.unsafe(`SELECT id::text AS id, nama FROM th_users WHERE aktif = true ORDER BY nama`)
     : Promise.resolve([]);
 
+  const waktuMulaiMuatan = Date.now();
   const skenarioQuery = klienMentah.unsafe(`
     SELECT s.id, s.kode, s.fase, s.judul, s.langkah_pengujian, s.hasil_diharapkan, s.hasil_aktual,
            s.status, s.catatan_tindak_lanjut, s.siap_retest, s.module_id, s.urutan,
@@ -100,7 +101,7 @@ export default async function HalamanProyek({
       SELECT e.scenario_id, count(*)::int AS jumlah
       FROM th_evidence e
       JOIN th_scenarios es ON es.id = e.scenario_id
-      WHERE es.project_id = $1 AND es.fase = $2
+      WHERE es.project_id = $1 AND es.fase = $2 AND e.status = 'READY'
       GROUP BY e.scenario_id
     ) e ON e.scenario_id = s.id
     WHERE s.project_id = $1 AND s.fase = $2
@@ -118,6 +119,7 @@ export default async function HalamanProyek({
   const anggota = anggotaRows as unknown as { id: string; nama: string; email: string; peran: string; ditambahkan_pada: string }[];
   const pic = picRows as unknown as { id: string; nama: string }[];
   const skenario = skenarioRows as unknown as Skenario[];
+  console.info("[scale] project scenario load", { count: skenario.length, elapsedMs: Date.now() - waktuMulaiMuatan });
 
   const hitung = {
     total: skenario.length,

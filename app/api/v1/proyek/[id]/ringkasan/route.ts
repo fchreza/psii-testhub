@@ -36,6 +36,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json({ pesan: "Fase tidak tersedia untuk proyek ini." }, { status: 400 });
     }
 
+    const mulaiQuery = Date.now();
     const [ringkasan] = (await klienMentah.unsafe(`
       SELECT
         COALESCE(
@@ -71,7 +72,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         SELECT e.scenario_id, count(*)::int AS jumlah
         FROM th_evidence e
         JOIN th_scenarios es ON es.id = e.scenario_id
-        WHERE es.project_id = $1 AND es.fase = $2
+        WHERE es.project_id = $1 AND es.fase = $2 AND e.status = 'READY'
         GROUP BY e.scenario_id
       ) e ON e.scenario_id = s.id
       WHERE s.project_id = $1 AND s.fase = $2
@@ -93,7 +94,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         tertunda: Number(ringkasan?.tertunda ?? 0),
         belum: Number(ringkasan?.belum ?? 0),
       },
-    }, { headers: { "Cache-Control": "no-store" } });
+    }, { headers: {
+      "Cache-Control": "no-store",
+      "Server-Timing": `scenario-read;dur=${Date.now() - mulaiQuery};desc="count:${Number(ringkasan?.total ?? 0)}"`,
+    } });
   } catch (error) {
     console.error("Gagal memuat ringkasan proyek", error);
     return NextResponse.json({ pesan: "Data proyek belum dapat diperbarui. Coba lagi." }, { status: 500 });
