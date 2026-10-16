@@ -26,7 +26,7 @@ export function TombolKeluar() {
   return (
     <div className="text-right">
       <button type="button" disabled={sibuk} aria-busy={sibuk} onClick={() => void keluar()}
-        className="inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-[13.5px] text-tinta-3 hover:bg-kanvas hover:text-tinta disabled:cursor-wait disabled:opacity-60">
+        className="inline-flex min-h-11 items-center gap-1.5 rounded-sm px-3 py-2 text-[13.5px] text-tinta-3 hover:bg-kanvas hover:text-tinta focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aksi disabled:cursor-wait disabled:opacity-60">
         {sibuk && <Spinner className="h-3.5 w-3.5" />}{sibuk ? "Keluar…" : "Keluar"}
       </button>
       {galat && <p role="alert" className="mt-1 max-w-52 text-[11px] text-gagal">{galat}</p>}
