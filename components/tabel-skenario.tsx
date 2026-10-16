@@ -211,7 +211,7 @@ export function TabelSkenario({
     try {
       const r = await fetch("/api/v1/skenario", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ aksi: "hapus", projectId, scenarioId: s.id }),
+        body: JSON.stringify({ aksi: "hapus", projectId, scenarioId: s.id, versi: s.versi }),
       });
       const j = await r.json().catch(() => ({ pesan: "Respons server tidak dapat dibaca." }));
       if (!r.ok) {
@@ -451,10 +451,11 @@ export function TabelSkenario({
                           </td>
 
                           <td className="px-3 py-2">
-                            <Select value={s.status} disabled={!bolehKelolaSkenario || barisSibuk.has(s.id)} aria-busy={barisSibuk.has(s.id)}
+                            <Select value={s.status} disabled={!bolehUbah || barisSibuk.has(s.id)} aria-busy={barisSibuk.has(s.id)}
                               onChange={(e) => void simpan(s.id, { status: e.target.value })}
                               aria-label={`Status ${s.kode}`}
-                              wrapClassName="max-w-[145px]" className={cn("h-8 rounded-md py-1 pl-2 pr-7 text-[12.5px] font-medium shadow-none", st.kelas)}>
+                              title={bolehUbah ? "Klik untuk mengubah status skenario" : "Status hanya-baca"}
+                              wrapClassName="max-w-[145px]" className={cn("h-8 rounded-md py-1 pl-2 pr-7 text-[12.5px] font-medium shadow-none", st.kelas, bolehUbah && "cursor-pointer hover:border-aksi/50 focus-visible:ring-2 focus-visible:ring-aksi")}>
                               {STATUS_PILIHAN.map((x) => <option key={x} value={x}>{labelStatus(x)}</option>)}
                             </Select>
                             {barisSibuk.has(s.id) && <Spinner className="ml-1 inline h-3.5 w-3.5" />}
@@ -486,7 +487,7 @@ export function TabelSkenario({
                                 aria-label={s.id.startsWith("draft:") ? "Buang draf skenario" : `Hapus ${s.kode}`}
                                 title={s.id.startsWith("draft:") ? "Buang draf" : "Hapus skenario"}
                                 aria-busy={hapusSibuk.has(s.id)}
-                                className="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-[12.5px] text-tinta-3 opacity-0 transition-opacity hover:bg-gagal-lembut hover:text-gagal focus:opacity-100 group-hover:opacity-100">
+                                className="inline-flex min-h-9 items-center gap-1.5 rounded-sm border border-gagal/25 bg-gagal-lembut/50 px-2 py-1 text-[12.5px] font-medium text-gagal transition-colors hover:bg-gagal-lembut focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-gagal disabled:opacity-60">
                                 {hapusSibuk.has(s.id) && <Spinner className="h-3.5 w-3.5" />}
                                 {hapusSibuk.has(s.id) ? "Menghapus…" : s.id.startsWith("draft:") ? "Buang draf" : "Hapus"}
                               </button>
@@ -554,7 +555,7 @@ export function TabelSkenario({
             <p className="mt-2 text-[13.5px] leading-relaxed text-tinta-2">
               {konfirmasiHapus.id.startsWith("draft:")
                 ? "Draf ini belum disimpan ke server. Buang draf dari layar ini?"
-                : <>Skenario <strong>{konfirmasiHapus.kode} — {konfirmasiHapus.judul}</strong> akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.</>}
+                : <>Skenario <strong>{konfirmasiHapus.kode} — {konfirmasiHapus.judul}</strong> akan dihapus permanen dan tidak dapat dibatalkan. Riwayat audit tetap disimpan. Untuk menjaga integritas bukti, skenario dengan rekam bukti (termasuk bukti yang sudah dihapus) atau riwayat unggahan tidak dapat dihapus.</>}
             </p>
             {hapusGalat && <Feedback kind="error" className="mt-3">{hapusGalat}</Feedback>}
             <div className="mt-5 flex justify-end gap-2">

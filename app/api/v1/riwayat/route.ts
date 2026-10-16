@@ -28,9 +28,19 @@ export async function GET(req: Request) {
   const [s] = (await klienMentah.unsafe(
     `SELECT project_id FROM th_scenarios WHERE id = $1::uuid`, [scenarioId],
   )) as unknown as { project_id: string }[];
-  if (!s) return NextResponse.json({ pesan: "Skenario tidak ditemukan" }, { status: 404 });
+  let projectId: string | null = s?.project_id ?? null;
+  if (!projectId) {
+    // Hard delete menyisakan audit tombstone; histori tetap dapat ditelusuri.
+    const [hapus] = (await klienMentah.unsafe(
+      `SELECT project_id FROM th_audit_logs
+       WHERE scenario_id = $1::uuid AND aksi = 'hapus_skenario' AND project_id IS NOT NULL
+       ORDER BY pada DESC, id DESC LIMIT 1`, [scenarioId],
+    )) as unknown as { project_id: string }[];
+    if (!hapus) return NextResponse.json({ pesan: "Skenario tidak ditemukan" }, { status: 404 });
+    projectId = hapus.project_id;
+  }
 
-  if (!(await bolehAksesProyek(saya, s.project_id))) {
+  if (!(await bolehAksesProyek(saya, projectId))) {
     return NextResponse.json({ pesan: "Tidak punya akses" }, { status: 403 });
   }
 

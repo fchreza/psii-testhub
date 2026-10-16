@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { temukanKekuranganSkema } from "../lib/skema";
+import { sebabBlokirHapusSkenario } from "../lib/keamanan-hapus-skenario";
 
 const MIGRASI = [
   "db/migrasi-001.sql",
@@ -49,6 +50,65 @@ test("schema gate fails closed on a missing table/column/index or legacy role", 
   assert.ok(missing.includes("kolom th_evidence.status"));
   assert.ok(missing.includes("indeks th_evidence_status_idx"));
   assert.ok(missing.includes("role legacy PM"));
+});
+
+test("bukti dan intent upload melindungi cascade; audit penghapusan tetap tersimpan", async () => {
+  const db = await databaseUji();
+  try {
+    const user = await db.query("INSERT INTO th_users (email,nama) VALUES ('tester@example.test','Tester') RETURNING id");
+    const userId = (user.rows[0] as { id: string }).id;
+    await db.query("INSERT INTO th_projects (id,nama) VALUES ('PRJ-001','Project')");
+
+    const withEvidence = await db.query(
+      "INSERT INTO th_scenarios (project_id,kode,judul) VALUES ('PRJ-001','SIT-001','With evidence') RETURNING id",
+    );
+    const evidenceScenarioId = (withEvidence.rows[0] as { id: string }).id;
+    await db.query(
+      "INSERT INTO th_evidence (scenario_id,path,status,deleted_at) VALUES ($1,'bukti/tombstone.png','DELETED',now())",
+      [evidenceScenarioId],
+    );
+    const evidenceCount = await db.query("SELECT count(*)::int AS n FROM th_evidence WHERE scenario_id=$1", [evidenceScenarioId]);
+    const noIntent = await db.query("SELECT count(*)::int AS n FROM th_evidence_uploads WHERE scenario_id=$1", [evidenceScenarioId]);
+    assert.equal(sebabBlokirHapusSkenario(
+      (evidenceCount.rows[0] as { n: number }).n,
+      (noIntent.rows[0] as { n: number }).n,
+    ), "bukti", "tombstone tetap mencegah ON DELETE CASCADE");
+
+    const withUpload = await db.query(
+      "INSERT INTO th_scenarios (project_id,kode,judul) VALUES ('PRJ-001','SIT-002','With upload history') RETURNING id",
+    );
+    const uploadScenarioId = (withUpload.rows[0] as { id: string }).id;
+    await db.query(
+      `INSERT INTO th_evidence_uploads
+         (user_id,project_id,scenario_id,idempotency_key,staging_path,final_path,nama_asli,tipe,ukuran,status,expires_at)
+       VALUES ($1::uuid,'PRJ-001',$2::uuid,gen_random_uuid(),'bukti-upload/stage.png','bukti/final.png','stage.png','image/png',10,'EXPIRED',now())`,
+      [userId, uploadScenarioId],
+    );
+    const uploadCount = await db.query("SELECT count(*)::int AS n FROM th_evidence_uploads WHERE scenario_id=$1", [uploadScenarioId]);
+    assert.equal(sebabBlokirHapusSkenario(0, (uploadCount.rows[0] as { n: number }).n), "unggahan");
+
+    const clean = await db.query(
+      "INSERT INTO th_scenarios (project_id,kode,judul) VALUES ('PRJ-001','SIT-003','Clean') RETURNING id",
+    );
+    const cleanId = (clean.rows[0] as { id: string }).id;
+    await db.query(
+      `INSERT INTO th_audit_logs (user_id,project_id,scenario_id,aksi,kolom,nilai_lama)
+       VALUES ($1::uuid,'PRJ-001',$2::uuid,'ubah_status','status','PENDING')`, [userId, cleanId],
+    );
+    await db.exec("BEGIN");
+    await db.query(
+      `INSERT INTO th_audit_logs (user_id,project_id,scenario_id,aksi,kolom,nilai_lama)
+       VALUES ($1::uuid,'PRJ-001',$2::uuid,'hapus_skenario','judul','SIT-003 — Clean')`, [userId, cleanId],
+    );
+    await db.query("DELETE FROM th_scenarios WHERE id=$1::uuid", [cleanId]);
+    await db.exec("COMMIT");
+    const history = await db.query(
+      "SELECT aksi FROM th_audit_logs WHERE scenario_id=$1::uuid ORDER BY id", [cleanId],
+    );
+    assert.deepEqual((history.rows as { aksi: string }[]).map((x) => x.aksi), ["ubah_status", "hapus_skenario"]);
+  } finally {
+    await db.close();
+  }
 });
 
 test("audit+metadata dapat di-rollback bersama, dan update versi stale ditolak oleh optimistic concurrency", async () => {
