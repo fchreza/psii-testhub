@@ -1,26 +1,10 @@
-import Link from "next/link";
 import { klienMentah } from "@/db";
 import { Nav } from "@/components/nav";
 import { wajibMasuk, internal, bolehKelolaProyek } from "@/lib/gerbang";
-import { tanggalID } from "@/lib/waktu";
 import { TombolProyekBaru } from "@/components/tombol-proyek-baru";
-import { TombolHapusProyek } from "@/components/tombol-hapus-proyek";
-import { labelJenisPengujian } from "@/lib/fase-proyek";
+import { DaftarProyek, type BarisProyek } from "@/components/daftar-proyek";
 
 export const dynamic = "force-dynamic";
-
-type Baris = {
-  id: string; nama: string; aplikasi: string | null; modul: string | null;
-  modul_aplikasi: string | null; jenis_pengujian: string;
-  tahap: string; lingkungan: string; tanggal_mulai: string | Date | null;
-  target_selesai: string | Date | null; pm_nama: string | null;
-  total: number; lulus: number; gagal: number; tertunda: number; belum: number;
-};
-
-const LABEL_TAHAP: Record<string, string> = {
-  PERSIAPAN: "Persiapan", SIT: "Sedang SIT", UAT: "Sedang UAT",
-  WAITING_SIGNOFF: "Menunggu tanda tangan", SELESAI: "Selesai",
-};
 
 /**
  * Daftar proyek.
@@ -69,13 +53,13 @@ export default async function HalamanProyek() {
     ? klienMentah.unsafe(`SELECT id::text AS id, nama FROM th_users WHERE aktif = true ORDER BY nama`)
     : Promise.resolve([]);
   const [daftarRows, calonRows] = await Promise.all([daftarQuery, calonQuery]);
-  const daftar = daftarRows as unknown as Baris[];
+  const daftar = daftarRows as unknown as BarisProyek[];
   const calonPIC = calonRows as unknown as { id: string; nama: string }[];
 
   return (
     <>
       <Nav aktif="proyek" peran={saya.peran} />
-      <main id="konten-utama" tabIndex={-1} className="mx-auto max-w-[1200px] px-6 py-8">
+      <main id="konten-utama" tabIndex={-1} className="mx-auto max-w-[1200px] px-6 py-8 2xl:max-w-[1800px]">
         <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-tinta">Proyek pengujian</h1>
@@ -88,97 +72,7 @@ export default async function HalamanProyek() {
           {dapatMengelola && <TombolProyekBaru pic={calonPIC} />}
         </header>
 
-        {daftar.length === 0 ? (
-          <div className="rounded-lg border border-garis bg-kartu px-6 py-12 text-center">
-            <p className="text-[15px] font-medium text-tinta">Belum ada proyek</p>
-            <p className="mx-auto mt-1 max-w-md text-[14px] leading-relaxed text-tinta-2">
-              {lihatSemua
-                ? dapatMengelola
-                  ? "Proyek adalah wadah untuk skenario SIT dan UAT. Tekan tombol di atas untuk membuat yang pertama."
-                  : "Belum ada proyek di portofolio yang dapat Anda lihat."
-                : "Anda belum ditambahkan sebagai anggota proyek mana pun. Hubungi admin."}
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-garis bg-kartu">
-            <table className="w-full border-collapse text-[14px]">
-              <thead>
-                <tr className="border-b border-garis bg-kanvas text-left">
-                  {["Proyek","Aplikasi / modul","Jenis pengujian","Tahap","Periode","Kelulusan","Kendala",""].map((h, i) => (
-                    <th key={i} className="whitespace-nowrap px-3 py-2.5 text-[12.5px] font-semibold uppercase tracking-wide text-tinta-3">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {daftar.map((p) => {
-                  // Tingkat kelulusan memakai SEMUA skenario sebagai pembagi
-                  // (keputusan pemilik produk): mengukur kemajuan, bukan mutu.
-                  const persen = p.total > 0 ? Math.round((p.lulus / p.total) * 100) : 0;
-                  const kendala = p.gagal + p.tertunda;
-                  return (
-                    <tr key={p.id} className="border-b border-garis last:border-0 hover:bg-kanvas/60">
-                      <td className="px-3 py-2.5">
-                        <Link href={`/proyek/${p.id}`} className="font-semibold text-tinta hover:text-aksi">
-                          {p.nama}
-                        </Link>
-                        <span className="mt-0.5 block text-[12.5px] text-tinta-3">
-                          {p.id}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-tinta-2">
-                        {[p.aplikasi ?? p.modul_aplikasi, p.modul].filter(Boolean).join(" · ") || "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-tinta-2">{labelJenisPengujian(p.jenis_pengujian)}</td>
-                      <td className="px-3 py-2.5">
-                        <span className="rounded-sm bg-kanvas px-2 py-0.5 text-[12.5px] font-medium text-tinta-2">
-                          {LABEL_TAHAP[p.tahap] ?? p.tahap}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-[13px] text-tinta-2">
-                        {p.tanggal_mulai ? tanggalID(p.tanggal_mulai) : "—"}
-                        {p.target_selesai ? ` – ${tanggalID(p.target_selesai)}` : ""}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className="flex items-center gap-2">
-                          <span className="h-1.5 w-16 overflow-hidden rounded-full bg-kanvas" aria-hidden>
-                            <span className="block h-full rounded-full bg-lulus"
-                              style={{ width: `${Math.max(2, persen)}%` }} />
-                          </span>
-                          <span className="tabular text-[13px] text-tinta-2">
-                            {persen}%
-                          </span>
-                        </span>
-                        <span className="mt-0.5 block text-[12px] text-tinta-3">
-                          {p.lulus} dari {p.total} skenario
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {kendala > 0 ? (
-                          <span className="rounded-sm bg-gagal-lembut px-2 py-0.5 text-[12.5px] font-medium text-gagal">
-                            {kendala} perlu tindak lanjut
-                          </span>
-                        ) : (
-                          <span className="text-[12.5px] text-tinta-3">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                        <Link href={`/proyek/${p.id}`}
-                          className="rounded-sm px-2 py-1 text-[13px] text-aksi hover:bg-aksi-lembut">
-                          Buka
-                        </Link>
-                        {saya.peran === "ADMIN" && <TombolHapusProyek projectId={p.id} nama={p.nama} />}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <DaftarProyek daftar={daftar} lihatSemua={lihatSemua} dapatMengelola={dapatMengelola} peran={saya.peran} />
       </main>
     </>
   );

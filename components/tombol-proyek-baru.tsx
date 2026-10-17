@@ -75,8 +75,14 @@ export function TombolProyekBaru({ pic }: { pic: { id: string; nama: string }[] 
               </Select>
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Isian id="p-aplikasi" label="Aplikasi" nilai={f.aplikasi} ubah={(v) => set("aplikasi", v)}
-                contoh="OM-SPAN TKD" maksimal={160} />
+              <Field id="p-aplikasi" label="Aplikasi" optional>
+                <Select id="p-aplikasi" value={f.aplikasi} onChange={(e) => set("aplikasi", e.target.value)}>
+                  <option value="">— Pilih aplikasi —</option>
+                  <option value="OMSPAN TKD">OMSPAN TKD</option>
+                  <option value="SPAN Extension">SPAN Extension</option>
+                  <option value="SPAN">SPAN</option>
+                </Select>
+              </Field>
               <Isian id="p-modul" label="Modul" nilai={f.modul} ubah={(v) => set("modul", v)}
                 contoh="Penyaluran TKD" maksimal={160} />
             </div>
