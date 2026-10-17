@@ -3,15 +3,17 @@ import { notFound, redirect } from "next/navigation";
 import { klienMentah } from "@/db";
 import { Nav } from "@/components/nav";
 import { wajibMasuk, bolehAksesProyek, bolehKelolaProyek, bolehHapusBukti, bolehLewatiGuardHapusSkenario, bolehUbahEksekusi } from "@/lib/gerbang";
-import { tanggalID } from "@/lib/waktu";
 import type { Skenario, Modul, Orang } from "@/components/tabel-skenario";
 import { AreaSkenarioProyek } from "@/components/area-skenario-proyek";
 import { KelolaAksesProyek } from "@/components/kelola-akses-proyek";
 import { UbahTahapProyek } from "@/components/ubah-tahap-proyek";
 import { EditorMetadataProyek } from "@/components/editor-metadata-proyek";
+import { InformasiProyek } from "@/components/informasi-proyek";
+import { MetadataProyekProvider } from "@/components/metadata-proyek-state";
+import { NamaProyek } from "@/components/nama-proyek";
 import { TombolHapusProyek } from "@/components/tombol-hapus-proyek";
 import { AkunUjiProyek } from "@/components/akun-uji-proyek";
-import { faseUntukProyek, labelJenisPengujian, type FasePengujian } from "@/lib/fase-proyek";
+import { faseUntukProyek, type FasePengujian } from "@/lib/fase-proyek";
 import { bolehLihatAkunUji, bolehKelolaAkunUji } from "@/lib/aturan-peran";
 
 export const dynamic = "force-dynamic";
@@ -140,64 +142,40 @@ export default async function HalamanProyek({
           <Link href="/proyek" className="hover:text-aksi">Proyek</Link> / {p.id}
         </p>
 
-        <header className="mb-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-tinta">{p.nama}</h1>
+        <MetadataProyekProvider key={id} awal={{
+          nama: p.nama,
+          aplikasi: (p.aplikasi ?? p.modul_aplikasi) as string | null,
+          modul: p.modul as string | null,
+          jenisPengujian,
+          ruangLingkup: p.ruang_lingkup as string | null,
+          dasarRegulasi: p.dasar_regulasi as string | null,
+          alamatPengujian: p.alamat_server as string | null,
+          tahunAnggaran: p.tahun_anggaran as number | null,
+          tanggalMulai: p.tanggal_mulai as string | Date | null,
+          targetSelesai: p.target_selesai as string | Date | null,
+          pmId: p.pm_id as string | null,
+          pmNama: p.pm_nama,
+        }}>
+          <header className="mb-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><NamaProyek /></div>
+              {kelolaProyek ? <div className="flex flex-wrap items-center gap-2">
+                <UbahTahapProyek projectId={id} tahap={p.tahap} jenisPengujian={jenisPengujian} />
+                <EditorMetadataProyek projectId={id} pic={pic} />
+                {saya.peran === "ADMIN" && <TombolHapusProyek projectId={id} nama={p.nama} />}
+              </div> : (
+                <span className="rounded-sm bg-kanvas px-2.5 py-1 text-[13px] font-medium text-tinta-2">
+                  {LABEL_TAHAP[p.tahap] ?? p.tahap}
+                </span>
+              )}
             </div>
-            {kelolaProyek ? <div className="flex flex-wrap items-center gap-2">
-              <UbahTahapProyek projectId={id} tahap={p.tahap} jenisPengujian={jenisPengujian} />
-              <EditorMetadataProyek projectId={id} nilai={{
-                nama: p.nama,
-                aplikasi: (p.aplikasi ?? p.modul_aplikasi) as string | null,
-                modul: p.modul as string | null,
-                jenisPengujian,
-                ruangLingkup: p.ruang_lingkup as string | null,
-                dasarRegulasi: p.dasar_regulasi as string | null,
-                alamatPengujian: p.alamat_server as string | null,
-                tahunAnggaran: p.tahun_anggaran as number | null,
-                tanggalMulai: p.tanggal_mulai as string | Date | null,
-                targetSelesai: p.target_selesai as string | Date | null,
-                pmId: p.pm_id as string | null,
-              }} pic={pic} />
-              {saya.peran === "ADMIN" && <TombolHapusProyek projectId={id} nama={p.nama} />}
-            </div> : (
-              <span className="rounded-sm bg-kanvas px-2.5 py-1 text-[13px] font-medium text-tinta-2">
-                {LABEL_TAHAP[p.tahap] ?? p.tahap}
-              </span>
+          </header>
+          <InformasiProyek pic={pic}>
+            {bolehLihatAkunUji(saya.peran) && (
+              <AkunUjiProyek projectId={id} bolehKelola={bolehKelolaAkunUji(saya.peran)} />
             )}
-          </div>
-        </header>
-
-        <section aria-labelledby="informasi-proyek" className="mb-5 overflow-hidden rounded-xl border border-garis bg-kartu shadow-xs shadow-tinta/3">
-          <div className="border-b border-garis px-4 py-3 sm:px-5">
-            <h2 id="informasi-proyek" className="text-[14px] font-semibold text-tinta">Informasi proyek</h2>
-          </div>
-          <dl className="grid sm:grid-cols-2 lg:grid-cols-3">
-            {([
-              ["Aplikasi", p.aplikasi ?? p.modul_aplikasi],
-              ["Modul", p.modul],
-              ["Jenis pengujian", labelJenisPengujian(jenisPengujian)],
-              ["Ruang lingkup", p.ruang_lingkup],
-              ["Dasar regulasi", p.dasar_regulasi],
-              ["Alamat pengujian", p.alamat_server],
-              ["Tahun anggaran", p.tahun_anggaran],
-              ["Tanggal mulai", p.tanggal_mulai ? tanggalID(p.tanggal_mulai as string | Date) : null],
-              ["Target selesai", p.target_selesai ? tanggalID(p.target_selesai as string | Date) : null],
-              ["PIC", p.pm_nama],
-            ] as [string, unknown][]).map(([label, nilai]) => (
-              <div key={label} className="min-w-0 border-b border-garis px-4 py-3.5 sm:px-5">
-                <dt className="text-[12px] font-medium text-tinta-3">{label}</dt>
-                <dd className="mt-1 whitespace-pre-wrap wrap-break-word text-[14px] leading-relaxed text-tinta">
-                  {nilai === null || nilai === undefined || nilai === "" ? <span className="text-tinta-3">—</span> : String(nilai)}
-                </dd>
-              </div>
-            ))}
-          </dl>
-          {bolehLihatAkunUji(saya.peran) && (
-            <AkunUjiProyek projectId={id} bolehKelola={bolehKelolaAkunUji(saya.peran)} />
-          )}
-        </section>
+          </InformasiProyek>
+        </MetadataProyekProvider>
 
         {kelolaProyek && (
           <KelolaAksesProyek projectId={id} calon={calon} anggotaAwal={anggota} faseTersedia={faseTersedia} />

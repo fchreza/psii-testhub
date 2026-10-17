@@ -262,7 +262,23 @@ export async function POST(req: Request) {
             ? dateOnly(x.nilai) : x.nilai;
           return String(sebelumnya ?? "") !== String(berikutnya ?? "");
         });
-        if (!efektif.length) return { error: null, changed: 0 };
+        const nilaiAkhir = (kolom: string) => {
+          const perubahanKolom = perubahan.find((x) => x.kolom === kolom);
+          return perubahanKolom ? perubahanKolom.nilai : lama[kolom];
+        };
+        const metadata = {
+          nama: String(nilaiAkhir("nama") ?? ""),
+          aplikasi: (nilaiAkhir("aplikasi") ?? nilaiAkhir("modul_aplikasi")) as string | null,
+          modul: nilaiAkhir("modul") as string | null,
+          ruangLingkup: nilaiAkhir("ruang_lingkup") as string | null,
+          dasarRegulasi: nilaiAkhir("dasar_regulasi") as string | null,
+          alamatPengujian: nilaiAkhir("alamat_server") as string | null,
+          tahunAnggaran: nilaiAkhir("tahun_anggaran") == null ? null : Number(nilaiAkhir("tahun_anggaran")),
+          tanggalMulai: dateOnly(nilaiAkhir("tanggal_mulai")),
+          targetSelesai: dateOnly(nilaiAkhir("target_selesai")),
+          pmId: nilaiAkhir("pm_id") == null ? null : String(nilaiAkhir("pm_id")),
+        };
+        if (!efektif.length) return { error: null, changed: 0, metadata };
         const parameter: (string | number | null)[] = [projectId];
         const setSql = efektif.map((x) => { parameter.push(x.nilai); return `${x.kolom} = $${parameter.length}${x.cast ?? ""}`; });
         await tx.unsafe(`UPDATE th_projects SET ${setSql.join(", ")} WHERE id = $1`, parameter);
@@ -273,11 +289,11 @@ export async function POST(req: Request) {
             [saya.id, projectId, item.kolom, lama[item.kolom] == null ? null : String(lama[item.kolom]), item.nilai == null ? null : String(item.nilai)],
           );
         }
-        return { error: null, changed: efektif.length };
+        return { error: null, changed: efektif.length, metadata };
       });
       if (hasil.error) return NextResponse.json({ pesan: hasil.error }, { status: hasil.error === "Proyek tidak ditemukan." ? 404 : 400 });
       revalidatePath(`/proyek/${projectId}`); revalidatePath("/proyek"); revalidatePath("/dashboard");
-      return NextResponse.json({ ok: true, berubah: hasil.changed });
+      return NextResponse.json({ ok: true, berubah: hasil.changed, metadata: hasil.metadata });
     }
 
     if (isi.aksi === "ubah_tahap") {
