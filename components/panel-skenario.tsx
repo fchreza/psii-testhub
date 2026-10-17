@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn, STATUS_UJI, labelStatus } from "@/lib/format";
 import { capWaktuID } from "@/lib/waktu";
+import { bacaAuditBukti } from "@/lib/audit-bukti";
 import { BuktiSkenario } from "./bukti-skenario";
 import type { Skenario } from "./tabel-skenario";
 import { Spinner } from "@/components/indikator-proses";
@@ -13,6 +14,42 @@ type Riwayat = {
   nilai_lama: string | null; nilai_baru: string | null;
   pada: string; oleh: string | null;
 };
+
+function keteranganRiwayat(x: Riwayat): string | null {
+  if (x.aksi === "hapus_bukti" && x.kolom === "evidence_event") {
+    const detail = bacaAuditBukti(x.nilai_baru);
+    const hasil = detail?.outcome === "deleted" ? "penghapusan selesai" : "menunggu pembersihan penyimpanan";
+    const alasan = detail?.reason ? ` · Alasan: ${detail.reason.slice(0, 120)}` : "";
+    return `ID bukti ${x.nilai_lama ?? "tidak tersedia"} · ${hasil}${alasan}`;
+  }
+  if (x.aksi === "unggah_bukti" && x.kolom === "evidence_event") {
+    const detail = bacaAuditBukti(x.nilai_baru);
+    return `ID bukti ${x.nilai_lama ?? "tidak tersedia"} · ${detail?.outcome === "uploaded" ? "unggah berhasil" : "unggah tercatat"}`;
+  }
+  if ((x.aksi === "unggah_bukti" || x.aksi === "hapus_bukti") && x.kolom === "bukti") {
+    return "ID bukti tidak tersedia (riwayat lama)";
+  }
+  if (x.nilai_lama && x.nilai_baru && x.kolom === "status") {
+    return `${labelStatus(x.nilai_lama)} → ${labelStatus(x.nilai_baru)}`;
+  }
+  if (x.nilai_baru) return x.nilai_baru.length > 60 ? x.nilai_baru.slice(0, 60) + "…" : x.nilai_baru;
+  return null;
+}
+
+function labelAksiRiwayat(x: Riwayat): string {
+  if (x.aksi === "hapus_bukti" && x.kolom === "evidence_event") {
+    return bacaAuditBukti(x.nilai_baru)?.outcome === "deleted" ? "Bukti dihapus" : "Penghapusan bukti tertunda";
+  }
+  if (x.aksi === "unggah_bukti" && x.kolom === "evidence_event") return "Bukti diunggah";
+  if (x.aksi === "unggah_bukti" && x.kolom === "bukti") return "Unggah bukti (riwayat lama)";
+  if (x.aksi === "hapus_bukti" && x.kolom === "bukti") return "Hapus bukti (riwayat lama)";
+  return ({
+    ubah_status: "Status",
+    ubah_skenario: "Perubahan skenario",
+    tambah_skenario: "Skenario dibuat",
+    hapus_skenario: "Skenario dihapus",
+  } as Record<string, string>)[x.aksi] ?? "Perubahan";
+}
 
 const CACHE_RIWAYAT = new Map<string, { versi: string; riwayat: Riwayat[]; nextCursor: string | null }>();
 const MAKS_CACHE_RIWAYAT = 100;
@@ -72,6 +109,10 @@ export function PanelSkenario({
   const kunciRiwayatAktif = `${skenario.id}:${skenario.versi}`;
   const kunciRiwayatRef = useRef(kunciRiwayatAktif);
   kunciRiwayatRef.current = kunciRiwayatAktif;
+  const riwayatBerubah = useCallback(() => {
+    CACHE_RIWAYAT.delete(skenario.id);
+    setRiwayatRetry((x) => x + 1);
+  }, [skenario.id]);
   const versiDrafSebelumnya = useRef(skenario);
   const [draf, setDraf] = useState<DrafSkenario>(() => bentukDraf(skenario));
   const [editorRevision, setEditorRevision] = useState(0);
@@ -398,7 +439,7 @@ export function PanelSkenario({
 
           <section className="rounded-xl border border-garis bg-kartu p-3.5 shadow-xs shadow-tinta/3">
             <BuktiSkenario projectId={projectId} scenarioId={skenario.id} bolehUbah={bolehUbah} bolehHapus={bolehHapusBukti}
-              onDataMutasi={onDataMutasi} />
+              onDataMutasi={onDataMutasi} onRiwayatBerubah={riwayatBerubah} />
           </section>
 
           {/* Riwayat perubahan: NFR-1 mewajibkan jejak, dan jejak yang tidak
@@ -425,18 +466,9 @@ export function PanelSkenario({
                 {riwayat.map((x) => (
                   <li key={x.id} className="border-l-2 border-garis pl-3">
                     <p className="text-[13px] text-tinta-2">
-                      {{
-                        ubah_status: "Status",
-                        ubah_skenario: "Perubahan skenario",
-                        unggah_bukti: "Bukti diunggah",
-                        hapus_bukti: "Bukti dihapus",
-                        tambah_skenario: "Skenario dibuat",
-                        hapus_skenario: "Skenario dihapus",
-                      }[x.aksi] ?? "Perubahan"}
-                      {x.nilai_lama && x.nilai_baru && x.kolom === "status" ? (
-                        <>: {labelStatus(x.nilai_lama)} → <strong className="font-semibold">{labelStatus(x.nilai_baru)}</strong></>
-                      ) : x.nilai_baru ? (
-                        <>: {x.nilai_baru.length > 60 ? x.nilai_baru.slice(0, 60) + "…" : x.nilai_baru}</>
+                      {labelAksiRiwayat(x)}
+                      {keteranganRiwayat(x) ? (
+                        <>: <strong className="font-medium">{keteranganRiwayat(x)}</strong></>
                       ) : null}
                     </p>
                     <p className="text-[12px] text-tinta-3">

@@ -9,6 +9,7 @@ import {
 import { finalisasiIntentUpload, selesaikanPenghapusanBukti } from "@/lib/bukti-operasi";
 import { perluAlasanHapusBuktiTerakhir } from "@/lib/validasi-bukti";
 import { pathKunciHapusSkenario } from "@/lib/keamanan-hapus-skenario";
+import { serialisasiAuditBukti } from "@/lib/audit-bukti";
 
 export const dynamic = "force-dynamic";
 
@@ -178,9 +179,9 @@ export async function POST(req: Request) {
         )) as unknown as { ada: number }[];
         if (penghapusanSkenario) return { status: "scenario_delete_pending" as const };
         const [bukti] = (await tx.unsafe(
-          `SELECT id, path, nama_asli, status FROM th_evidence
+          `SELECT id, path, status FROM th_evidence
            WHERE id = $1::uuid AND scenario_id = $2::uuid FOR UPDATE`, [evidenceId, skenario.id],
-        )) as unknown as { id: string; path: string; nama_asli: string | null; status: string }[];
+        )) as unknown as { id: string; path: string; status: string }[];
         if (!bukti) return { status: "missing" as const };
         if (bukti.status === "DELETED") return { status: "done" as const, id: bukti.id, path: bukti.path };
         if (bukti.status === "DELETE_PENDING") return { status: "pending" as const, id: bukti.id, path: bukti.path };
@@ -207,8 +208,8 @@ export async function POST(req: Request) {
         );
         await tx.unsafe(
           `INSERT INTO th_audit_logs (user_id, project_id, scenario_id, aksi, kolom, nilai_lama, nilai_baru)
-           VALUES ($1::uuid, $2, $3::uuid, 'hapus_bukti', 'bukti', $4, $5)`,
-          [saya.id, projectId, skenario.id, bukti.nama_asli ?? bukti.path, alasan || null],
+           VALUES ($1::uuid, $2, $3::uuid, 'hapus_bukti', 'evidence_event', $4, $5)`,
+          [saya.id, projectId, skenario.id, bukti.id, serialisasiAuditBukti("pending", alasan)],
         );
         return { status: "pending" as const, id: bukti.id, path: bukti.path };
       });
@@ -227,16 +228,19 @@ export async function POST(req: Request) {
         if (projectId) revalidatePath(`/proyek/${projectId}`);
         return NextResponse.json({ ok: true });
       } catch (error) {
-        console.error("[bukti] delete tertunda; tombstone akan direkonsiliasi", hasilHapus.id, error);
+        console.error("[bukti] delete tertunda; tombstone akan direkonsiliasi", hasilHapus.id,
+          error instanceof Error ? error.name : "UnknownError");
         if (projectId) revalidatePath(`/proyek/${projectId}`);
-        return NextResponse.json({ ok: true, pending: true, pesan: "Penghapusan tercatat dan akan dicoba ulang saat storage tersedia." }, { status: 202 });
+        return NextResponse.json({ ok: true, pending: true, pesan: "Penghapusan masih tertunda dan akan dicoba ulang otomatis." }, { status: 202 });
       }
     }
 
     return NextResponse.json({ pesan: `Aksi tidak dikenal: ${isi.aksi}` }, { status: 400 });
   } catch (error) {
-    const pesan = error instanceof Error ? error.message : String(error);
-    console.error("[bukti]", isi.aksi, pesan);
+    console.error("[bukti] gagal memproses", {
+      aksi: isi.aksi,
+      jenisGalat: error instanceof Error ? error.name : "UnknownError",
+    });
     return NextResponse.json({ pesan: "Gagal memproses bukti. Periksa koneksi dan coba lagi." }, { status: 500 });
   }
 }

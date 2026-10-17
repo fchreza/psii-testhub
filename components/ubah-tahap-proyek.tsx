@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { faseUntukProyek, type FasePengujian } from "@/lib/fase-proyek";
 import { Spinner } from "@/components/indikator-proses";
-import { Feedback, Select } from "@/components/ui";
+import { Select } from "@/components/ui";
 
 const TAHAP = [
   ["PERSIAPAN", "Persiapan"],
@@ -21,6 +21,11 @@ export function UbahTahapProyek({ projectId, tahap, jenisPengujian }: {
   const [pesan, setPesan] = useState<{ teks: string; galat?: boolean } | null>(null);
 
   useEffect(() => setTahapAktif(tahap), [tahap]);
+  useEffect(() => {
+    if (!pesan || pesan.galat) return;
+    const timer = window.setTimeout(() => setPesan(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [pesan]);
 
   async function ubah(nilai: string) {
     if (nilai === tahapAktif || sibuk) return;
@@ -59,7 +64,17 @@ export function UbahTahapProyek({ projectId, tahap, jenisPengujian }: {
         </Select>
         {sibuk && <Spinner className="h-4 w-4 shrink-0 text-aksi" />}
       </div>
-      {pesan && <Feedback kind={pesan.galat ? "error" : "success"} className="mt-2">{pesan.teks}</Feedback>}
+      {pesan && (
+        <div className="pointer-events-none fixed inset-x-3 top-3 z-50 flex justify-end sm:inset-x-auto sm:right-6 sm:top-6">
+          <div role={pesan.galat ? "alert" : "status"}
+            aria-live={pesan.galat ? "assertive" : "polite"} aria-atomic="true"
+            className={`pointer-events-auto w-full max-w-sm rounded-lg border px-3.5 py-3 text-[13px] leading-relaxed shadow-lg ${
+              pesan.galat ? "border-gagal/30 bg-gagal-lembut text-gagal" : "border-lulus/25 bg-lulus-lembut text-lulus"
+            }`}>
+            {pesan.teks}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

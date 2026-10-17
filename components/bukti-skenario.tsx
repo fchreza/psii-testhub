@@ -62,8 +62,8 @@ async function kecilkan(berkas: File): Promise<File> {
 }
 
 export function BuktiSkenario({
-  projectId, scenarioId, bolehUbah, bolehHapus, onDataMutasi,
-}: { projectId: string; scenarioId: string; bolehUbah: boolean; bolehHapus: boolean; onDataMutasi?: () => void }) {
+  projectId, scenarioId, bolehUbah, bolehHapus, onDataMutasi, onRiwayatBerubah,
+}: { projectId: string; scenarioId: string; bolehUbah: boolean; bolehHapus: boolean; onDataMutasi?: () => void; onRiwayatBerubah?: () => void }) {
   const [daftar, setDaftar] = useState<Bukti[]>([]);
   const [muat, setMuat] = useState(true);
   const [sibuk, setSibuk] = useState<string | null>(null);
@@ -133,6 +133,7 @@ export function BuktiSkenario({
         kunciUploadPerBerkas.current.delete(sidikBerkas);
         await ambil();
         setSukses(`${berkas.name} sudah tercatat; tidak dibuat duplikat.`);
+        onRiwayatBerubah?.();
         onDataMutasi?.();
         return;
       }
@@ -163,6 +164,7 @@ export function BuktiSkenario({
       kunciUploadPerBerkas.current.delete(sidikBerkas);
       await ambil();
       setSukses(`${berkas.name} berhasil diunggah.`);
+      onRiwayatBerubah?.();
       onDataMutasi?.();
     } catch (e) {
       setGalat(e instanceof Error ? e.message : "Gagal mengunggah");
@@ -192,8 +194,9 @@ export function BuktiSkenario({
       setAlasanHapus("");
       setGalat(null);
       setSukses(j.pending
-        ? `${b.nama_asli ?? "Bukti"} ditandai untuk dihapus; sistem akan mencoba kembali saat storage tersedia.`
+        ? `${b.nama_asli ?? "Bukti"} ditandai untuk dihapus; sistem akan mencoba kembali secara otomatis.`
         : `${b.nama_asli ?? "Bukti"} berhasil dihapus.`);
+      onRiwayatBerubah?.();
       onDataMutasi?.();
     } catch {
       setGalat("Tidak dapat terhubung. Bukti belum dihapus.");
