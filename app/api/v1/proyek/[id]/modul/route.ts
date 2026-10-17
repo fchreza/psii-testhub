@@ -40,24 +40,27 @@ export async function POST(
 
       // Menserialisasi penentuan urutan dan kode ketika beberapa pengelola menambah tab bersamaan.
       await tx.unsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`psii-testhub-module:${projectId}`]);
-      const rows = (await tx.unsafe(
-        `SELECT kode FROM th_modules WHERE project_id = $1`, [projectId],
-      )) as unknown as { kode: string }[];
-      const kode = kodeLembarBerikutnya(rows.map((row) => row.kode));
-      const [posisi] = (await tx.unsafe(
-        `SELECT COALESCE(MAX(urutan), -1) + 1 AS n FROM th_modules WHERE project_id = $1`, [projectId],
-      )) as unknown as { n: number }[];
+      const [ringkasan] = (await tx.unsafe(
+        `SELECT COALESCE(array_agg(kode), ARRAY[]::text[]) AS kode_terpakai,
+                COALESCE(MAX(urutan), -1) + 1 AS posisi
+         FROM th_modules WHERE project_id = $1`, [projectId],
+      )) as unknown as { kode_terpakai: string[]; posisi: number }[];
+      const kode = kodeLembarBerikutnya(ringkasan.kode_terpakai);
       const [modul] = (await tx.unsafe(
-        `INSERT INTO th_modules (project_id, kode, nama, urutan)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id::text AS id, kode, nama, urutan`,
-        [projectId, kode, nama.nama, posisi.n],
+        `WITH modul_baru AS (
+           INSERT INTO th_modules (project_id, kode, nama, urutan)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id::text AS id, kode, nama, urutan
+         ), audit_baru AS (
+           INSERT INTO th_audit_logs (user_id, project_id, aksi, kolom, nilai_baru)
+           SELECT $5::uuid, $1, 'tambah_modul', 'modul', m.kode || ' — ' || m.nama
+           FROM modul_baru m
+           RETURNING project_id
+         )
+         SELECT m.id, m.kode, m.nama, m.urutan
+         FROM modul_baru m JOIN audit_baru a ON a.project_id = $1`,
+        [projectId, kode, nama.nama, ringkasan.posisi, saya.id],
       )) as unknown as { id: string; kode: string; nama: string; urutan: number }[];
-      await tx.unsafe(
-        `INSERT INTO th_audit_logs (user_id, project_id, aksi, kolom, nilai_baru)
-         VALUES ($1::uuid, $2, 'tambah_modul', 'modul', $3)`,
-        [saya.id, projectId, `${kode} — ${nama.nama}`],
-      );
       return { tidakDitemukan: false as const, modul };
     });
 

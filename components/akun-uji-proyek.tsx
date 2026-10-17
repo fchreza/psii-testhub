@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Feedback, Field, Input } from "@/components/ui";
 import { useFocusTrap } from "@/components/use-focus-trap";
+import { perluMuatAkunUji } from "@/lib/akun-uji-state";
 
 type InfoAkun = { id: string; namaAkun: string; username: string };
 type DrafAkun = { id: string | null; namaAkun: string; username: string; password: string };
@@ -16,7 +17,11 @@ export function AkunUjiProyek({
   projectId, bolehKelola,
 }: { projectId: string; bolehKelola: boolean }) {
   const [akun, setAkun] = useState<InfoAkun[]>([]);
-  const [memuat, setMemuat] = useState(true);
+  const [memuat, setMemuat] = useState(false);
+  const [dibuka, setDibuka] = useState(false);
+  const [sudahMuat, setSudahMuat] = useState(false);
+  const [percobaanMuat, setPercobaanMuat] = useState(0);
+  const permintaanAktif = useRef(false);
   const [draf, setDraf] = useState<DrafAkun | null>(null);
   const [passwordTerlihat, setPasswordTerlihat] = useState<PasswordTerlihat | null>(null);
   const [konfirmasiHapus, setKonfirmasiHapus] = useState<InfoAkun | null>(null);
@@ -36,7 +41,7 @@ export function AkunUjiProyek({
       || draf.password.length > 0;
   }, [akun, draf]);
 
-  const muatAkun = useCallback(async (signal?: AbortSignal) => {
+  const muatAkun = useCallback(async (signal?: AbortSignal): Promise<boolean> => {
     setMemuat(true);
     setGalat(null);
     try {
@@ -51,19 +56,29 @@ export function AkunUjiProyek({
         && typeof item.username === "string",
       ) : [];
       setAkun(urutkanAkun(accounts));
+      return true;
     } catch (error) {
-      if (signal?.aborted) return;
+      if (signal?.aborted) return false;
       setGalat(error instanceof Error ? error.message : "Daftar akun uji tidak dapat dimuat.");
+      return false;
     } finally {
       if (!signal?.aborted) setMemuat(false);
     }
   }, [url]);
 
   useEffect(() => {
+    if (!perluMuatAkunUji(dibuka, sudahMuat, permintaanAktif.current)) return;
     const controller = new AbortController();
-    void muatAkun(controller.signal);
-    return () => controller.abort();
-  }, [muatAkun]);
+    permintaanAktif.current = true;
+    void muatAkun(controller.signal).then((berhasil) => {
+      if (berhasil) setSudahMuat(true);
+      if (!controller.signal.aborted) permintaanAktif.current = false;
+    });
+    return () => {
+      controller.abort();
+      permintaanAktif.current = false;
+    };
+  }, [dibuka, sudahMuat, percobaanMuat, muatAkun]);
 
   function bukaTambah() {
     setGalat(null);
@@ -167,17 +182,31 @@ export function AkunUjiProyek({
             Simpan beberapa username dan password untuk lingkungan SIT/UAT. Hanya Admin, Internal PSII, dan penguji yang ditugaskan yang dapat melihatnya; Pimpinan tidak memiliki akses.
           </p>
         </div>
-        {bolehKelola && !memuat && (
-          <Button type="button" variant="secondary" onClick={draf ? tutupForm : bukaTambah}
-            disabled={sibuk} className="min-h-9 px-3 py-1.5 text-[12.5px]">
-            {draf ? "Tutup form" : "Tambah akun uji"}
+        <div className="flex flex-wrap items-center gap-2">
+          {dibuka && bolehKelola && sudahMuat && (
+            <Button type="button" variant="secondary" onClick={draf ? tutupForm : bukaTambah}
+              disabled={sibuk} className="min-h-9 px-3 py-1.5 text-[12.5px]">
+              {draf ? "Tutup form" : "Tambah akun uji"}
+            </Button>
+          )}
+          <Button type="button" variant="secondary" aria-expanded={dibuka}
+            aria-controls={`akun-uji-konten-${projectId}`}
+            onClick={() => {
+              if (dibuka) {
+                setDibuka(false);
+                setPasswordTerlihat(null);
+                setKonfirmasiHapus(null);
+              } else setDibuka(true);
+            }} className="min-h-9 px-3 py-1.5 text-[12.5px]">
+            {dibuka ? "Sembunyikan" : "Tampilkan"} akun uji{dibuka || !sudahMuat ? "" : ` (${akun.length})`}
           </Button>
-        )}
+        </div>
       </div>
 
-      {memuat ? (
+      <div id={`akun-uji-konten-${projectId}`} hidden={!dibuka}>
+      {dibuka && (memuat ? (
         <p role="status" className="mt-3 text-[13px] text-tinta-3">Memuat akun uji…</p>
-      ) : akun.length > 0 ? (
+      ) : sudahMuat && akun.length > 0 ? (
         <div className="mt-3 space-y-3" aria-label={`${akun.length} akun uji`}>
           {akun.map((item) => {
             const passwordAktif = passwordTerlihat?.id === item.id ? passwordTerlihat.nilai : null;
@@ -221,16 +250,20 @@ export function AkunUjiProyek({
             );
           })}
         </div>
-      ) : (
+      ) : sudahMuat ? (
         <p className="mt-3 rounded-lg border border-dashed border-garis px-3 py-3 text-[13px] text-tinta-3">
           Belum ada akun uji untuk proyek ini.
         </p>
+      ) : null)}
+
+      {dibuka && galat && <Feedback kind="error" className="mt-3">{galat}</Feedback>}
+      {dibuka && !memuat && !sudahMuat && galat && (
+        <Button type="button" variant="secondary" onClick={() => setPercobaanMuat((n) => n + 1)}
+          className="mt-2 min-h-9 px-3 py-1.5 text-[12.5px]">Coba muat lagi</Button>
       )}
+      {dibuka && berhasil && <div role="status" aria-live="polite"><Feedback kind="success" className="mt-3">{berhasil}</Feedback></div>}
 
-      {galat && <Feedback kind="error" className="mt-3">{galat}</Feedback>}
-      {berhasil && <div role="status" aria-live="polite"><Feedback kind="success" className="mt-3">{berhasil}</Feedback></div>}
-
-      {draf && bolehKelola && (
+      {dibuka && draf && bolehKelola && (
         <form onSubmit={simpan} className="mt-4 space-y-3 rounded-lg border border-garis bg-kanvas/40 p-3 sm:p-4" aria-busy={sibuk}>
           <h4 className="text-[13.5px] font-semibold text-tinta">{draf.id ? "Ubah akun uji" : "Tambah akun uji"}</h4>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -260,6 +293,7 @@ export function AkunUjiProyek({
           </div>
         </form>
       )}
+      </div>
 
       {konfirmasiHapus && (
         <div className="fixed inset-0 z-70 flex items-center justify-center p-4">

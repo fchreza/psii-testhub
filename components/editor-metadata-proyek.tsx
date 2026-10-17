@@ -1,24 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useFocusTrap } from "@/components/use-focus-trap";
 import { Button, Feedback, Field, Input, Select, Textarea } from "@/components/ui";
 import { labelJenisPengujian } from "@/lib/fase-proyek";
-
-type MetadataProyek = {
-  nama: string;
-  aplikasi: string | null;
-  modul: string | null;
-  jenisPengujian: string;
-  ruangLingkup: string | null;
-  dasarRegulasi: string | null;
-  alamatPengujian: string | null;
-  tahunAnggaran: number | null;
-  tanggalMulai: string | Date | null;
-  targetSelesai: string | Date | null;
-  pmId: string | null;
-};
+import { useMetadataProyek, type MetadataProyek } from "@/components/metadata-proyek-state";
 
 type PIC = { id: string; nama: string };
 type Draft = {
@@ -57,8 +43,9 @@ function buatDraft(nilai: MetadataProyek): Draft {
 }
 
 export function EditorMetadataProyek({
-  projectId, nilai, pic,
-}: { projectId: string; nilai: MetadataProyek; pic: PIC[] }) {
+  projectId, pic,
+}: { projectId: string; pic: PIC[] }) {
+  const { metadata: nilai, perbaruiMetadata } = useMetadataProyek();
   const [buka, setBuka] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => buatDraft(nilai));
   const [sibuk, setSibuk] = useState(false);
@@ -66,7 +53,6 @@ export function EditorMetadataProyek({
   const [berhasil, setBerhasil] = useState<string | null>(null);
   const [konfirmasiBuang, setKonfirmasiBuang] = useState(false);
   const asal = useRef<Draft>(buatDraft(nilai));
-  const router = useRouter();
   const kotor = JSON.stringify(draft) !== JSON.stringify(asal.current);
 
   const set = (k: keyof Draft, v: string) => setDraft((x) => ({ ...x, [k]: v }));
@@ -125,9 +111,24 @@ export function EditorMetadataProyek({
         setGalat(hasil.pesan ?? "Gagal menyimpan metadata proyek.");
         return;
       }
+      const diperbarui = hasil.metadata as Partial<MetadataProyek> | undefined;
+      if (!diperbarui || typeof diperbarui.nama !== "string") {
+        setGalat("Respons metadata tidak lengkap. Perbarui halaman sebelum mengedit lagi.");
+        return;
+      }
+      const nilaiBaru: MetadataProyek = {
+        ...nilai,
+        ...diperbarui,
+        pmNama: diperbarui.pmId
+          ? pic.find((orang) => orang.id === diperbarui.pmId)?.nama ?? null
+          : null,
+      };
+      perbaruiMetadata(nilaiBaru);
+      const draftBaru = buatDraft(nilaiBaru);
+      asal.current = draftBaru;
+      setDraft(draftBaru);
       setBuka(false);
       setBerhasil("Informasi proyek berhasil diperbarui.");
-      router.refresh();
     } catch {
       setGalat("Tidak dapat terhubung. Periksa koneksi lalu coba lagi.");
     } finally {

@@ -5,11 +5,12 @@ import { Button, Feedback, Field, Input } from "@/components/ui";
 import type { Modul, Skenario } from "@/components/tabel-skenario";
 
 export function LembarSkenario({
-  projectId, modul, skenario, aktifId, bolehKelola, disabled = false, onPilih, onDibuat,
+  projectId, modul, skenario, jumlahPerModul, aktifId, bolehKelola, disabled = false, onPilih, onDibuat,
 }: {
   projectId: string;
   modul: Modul[];
   skenario: Skenario[];
+  jumlahPerModul: ReadonlyMap<string | null, number>;
   aktifId: string | null;
   bolehKelola: boolean;
   disabled?: boolean;
@@ -21,7 +22,7 @@ export function LembarSkenario({
   const [nama, setNama] = useState("");
   const [sibuk, setSibuk] = useState(false);
   const [galat, setGalat] = useState<string | null>(null);
-  const tanpaKelompok = skenario.filter((item) => !item.module_id).length;
+  const tanpaKelompok = jumlahPerModul.get(null) ?? 0;
 
   async function buat(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -96,7 +97,7 @@ export function LembarSkenario({
         <div role="tablist" aria-label="Kelompok, modul, atau menu" className="flex flex-wrap gap-1.5 border-b border-garis bg-kanvas/50 px-3 py-2.5 sm:px-4">
           {modul.map((item) => {
             const dipilih = aktifId === item.id;
-            const jumlah = skenario.filter((s) => s.module_id === item.id).length;
+            const jumlah = jumlahPerModul.get(item.id) ?? 0;
             return (
               <button key={item.id} id={`tab-lembar-${item.id}`} type="button" role="tab"
                 aria-selected={dipilih} aria-controls="panel-skenario-lembar" tabIndex={dipilih ? 0 : -1}

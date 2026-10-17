@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TabelSkenario, type Modul, type Orang, type Skenario } from "@/components/tabel-skenario";
 import { LembarSkenario } from "@/components/lembar-skenario";
@@ -13,6 +13,7 @@ import {
   jalankanRefreshJikaAman,
   tundaRefreshJikaDrafAktif,
 } from "@/lib/lembar-skenario-state";
+import { hitungJumlahPerModul, perbaruiSkenarioDanHitung } from "@/lib/proyek-skenario-state";
 
 type Statistik = { total: number; lulus: number; gagal: number; tertunda: number; belum: number };
 
@@ -36,6 +37,7 @@ export function AreaSkenarioProyek({
   bolehUbah, bolehKelolaSkenario, bolehHapusBukti, bolehAdminHapusSkenario,
 }: Props) {
   const [skenario, setSkenario] = useState(skenarioAwal);
+  const skenarioRef = useRef(skenarioAwal);
   const [statistik, setStatistik] = useState(statistikAwal);
   const [modulLokal, setModulLokal] = useState(modul);
   const [lembarDipilih, setLembarDipilih] = useState<string | null>(modul[0]?.id ?? null);
@@ -54,6 +56,7 @@ export function AreaSkenarioProyek({
   const dialogNavigasiRef = useFocusTrap<HTMLElement>(tautanTertunda !== null, () => setTautanTertunda(null));
 
   useEffect(() => {
+    skenarioRef.current = skenarioAwal;
     setSkenario(skenarioAwal);
     setStatistik(statistikAwal);
   }, [skenarioAwal, statistikAwal]);
@@ -61,7 +64,7 @@ export function AreaSkenarioProyek({
   useEffect(() => {
     setModulLokal(modul);
     setLembarDipilih(modul[0]?.id ?? null);
-  }, [projectId, modul]);
+  }, [projectId, fase, modul]);
 
   const segarkan = useCallback(async (manual: boolean) => {
     if (tundaRefreshJikaDrafAktif(drafAktifRef, refreshTertunda)) {
@@ -84,7 +87,8 @@ export function AreaSkenarioProyek({
       }
       if (controller.signal.aborted) return;
 
-      setSkenario(hasil.skenario as Skenario[]);
+      skenarioRef.current = hasil.skenario as Skenario[];
+      setSkenario(skenarioRef.current);
       setStatistik(hasil.statistik as Statistik);
       setModulLokal(hasil.modul as Modul[]);
       setPesan({
@@ -112,6 +116,14 @@ export function AreaSkenarioProyek({
     });
   }, [segarkan]);
 
+  const perbaruiSkenarioLokal = useCallback((id: string, tambalan: Partial<Skenario>) => {
+    const hasil = perbaruiSkenarioDanHitung(skenarioRef.current, id, tambalan);
+    const berikutnya = hasil.skenario;
+    skenarioRef.current = berikutnya;
+    setSkenario(berikutnya);
+    setStatistik(hasil.statistik);
+  }, []);
+
   useEffect(() => {
     if (drafAktif) {
       pengendali.current?.abort();
@@ -138,6 +150,14 @@ export function AreaSkenarioProyek({
     }
   }, [drafAktif, segarkan]);
 
+  useEffect(() => {
+    const sinkronSaatKembali = () => {
+      if (document.visibilityState === "visible") void segarkan(false);
+    };
+    document.addEventListener("visibilitychange", sinkronSaatKembali);
+    return () => document.removeEventListener("visibilitychange", sinkronSaatKembali);
+  }, [segarkan]);
+
   useEffect(() => () => {
     pengendali.current?.abort();
   }, []);
@@ -151,14 +171,15 @@ export function AreaSkenarioProyek({
     ["Belum diuji", statistik.belum, "text-tinta-3"],
     ["Kelulusan", `${persen}%`, "text-tinta"],
   ] as const;
-  const tanpaKelompok = skenario.filter((item) => !item.module_id).length;
+  const jumlahPerModul = useMemo(() => hitungJumlahPerModul(skenario), [skenario]);
+  const tanpaKelompok = jumlahPerModul.get(null) ?? 0;
   const idLembarAktif = lembarDipilih && modulLokal.some((item) => item.id === lembarDipilih)
     ? lembarDipilih
     : !lembarDipilih && tanpaKelompok > 0 ? null : modulLokal[0]?.id ?? null;
   const adaLembar = modulLokal.length > 0 || tanpaKelompok > 0;
-  const skenarioLembar = skenario.filter((item) => idLembarAktif
+  const skenarioLembar = useMemo(() => skenario.filter((item) => idLembarAktif
     ? item.module_id === idLembarAktif
-    : !item.module_id);
+    : !item.module_id), [skenario, idLembarAktif]);
   const modulAktif = modulLokal.find((item) => item.id === idLembarAktif);
   const modulUntukTabel: Modul[] = modulAktif
     ? [modulAktif]
@@ -205,17 +226,18 @@ export function AreaSkenarioProyek({
               ? "rounded-md bg-aksi px-3 py-2 text-[13.5px] font-medium text-white"
               : "rounded-md px-3 py-2 text-[13.5px] text-tinta-2 hover:bg-kartu"}>
             Tahap {tahap}
-            {tahap === fase && <span className="ml-1.5 tabular opacity-80">{skenario.filter((x) => !x.id.startsWith("draft:")).length}</span>}
+            {tahap === fase && <span className="ml-1.5 tabular opacity-80">{statistik.total}</span>}
           </Link>
         ))}
       </nav>
 
       <LembarSkenario projectId={projectId} modul={modulLokal} skenario={skenario}
-        aktifId={idLembarAktif} bolehKelola={bolehKelolaSkenario} disabled={drafAktif}
+        jumlahPerModul={jumlahPerModul} aktifId={idLembarAktif} bolehKelola={bolehKelolaSkenario} disabled={drafAktif}
         onPilih={setLembarDipilih}
         onDibuat={(baru) => {
           setModulLokal((lama) => [...lama, baru].sort((a, b) => a.urutan - b.urutan || a.kode.localeCompare(b.kode)));
           setLembarDipilih(baru.id);
+          refreshSetelahMutasi();
         }} />
       {adaLembar && (
         <section id="panel-skenario-lembar" role="tabpanel"
@@ -226,7 +248,6 @@ export function AreaSkenarioProyek({
             </Feedback>
           )}
           <TabelSkenario
-            key={`${projectId}:${fase}:${idLembarAktif ?? "tanpa-kelompok"}`}
             projectId={projectId}
             fase={fase}
             skenarioAwal={skenarioLembar}
@@ -239,6 +260,7 @@ export function AreaSkenarioProyek({
             bolehHapusBukti={bolehHapusBukti}
             bolehAdminHapusSkenario={bolehAdminHapusSkenario}
             onDataMutasi={refreshSetelahMutasi}
+            onSkenarioBerubah={perbaruiSkenarioLokal}
             onDraftChange={laporkanDrafAktif}
           />
         </section>

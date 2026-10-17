@@ -72,12 +72,20 @@ export async function POST(req: Request) {
       if (!["SIT","UAT"].includes(fase)) {
         return NextResponse.json({ pesan: `Fase tidak sah: ${fase}` }, { status: 400 });
       }
+      if (isi.moduleId && !UUID.test(isi.moduleId)) {
+        return NextResponse.json({ pesan: "moduleId tidak sah." }, { status: 400 });
+      }
       const [proyek] = (await klienMentah.unsafe(
-        `SELECT jenis_pengujian FROM th_projects WHERE id = $1`, [projectId],
-      )) as unknown as { jenis_pengujian: string }[];
+        `SELECT p.jenis_pengujian,
+                (SELECT m.kode FROM th_modules m WHERE m.id = $2::uuid AND m.project_id = p.id) AS kode_modul
+         FROM th_projects p WHERE p.id = $1`, [projectId, isi.moduleId || null],
+      )) as unknown as { jenis_pengujian: string; kode_modul: string | null }[];
       if (!proyek) return NextResponse.json({ pesan: "Proyek tidak ditemukan." }, { status: 404 });
       if (!faseUntukProyek(proyek.jenis_pengujian).includes(fase as FasePengujian)) {
         return NextResponse.json({ pesan: `Proyek ini hanya memiliki fase ${faseUntukProyek(proyek.jenis_pengujian).join(" dan ")}.` }, { status: 400 });
+      }
+      if (isi.moduleId && !proyek.kode_modul) {
+        return NextResponse.json({ pesan: "Modul tidak ditemukan di proyek ini." }, { status: 400 });
       }
       const judul = (isi.judul ?? "").trim().slice(0, 200);
       if (!judul) return NextResponse.json({ pesan: "Judul skenario wajib diisi" }, { status: 400 });
@@ -85,15 +93,15 @@ export async function POST(req: Request) {
       if (isi.pengujiId) {
         if (!UUID.test(isi.pengujiId)) return NextResponse.json({ pesan: "Penguji tidak sah." }, { status: 400 });
         const [penguji] = (await klienMentah.unsafe(
-          `SELECT id, peran FROM th_users WHERE id = $1::uuid AND aktif = true`, [isi.pengujiId],
-        )) as unknown as { id: string; peran: string }[];
+          `SELECT u.id, u.peran, (m.user_id IS NOT NULL) AS anggota
+           FROM th_users u
+           LEFT JOIN th_project_members m ON m.project_id = $1 AND m.user_id = u.id
+           WHERE u.id = $2::uuid AND u.aktif = true`, [projectId, isi.pengujiId],
+        )) as unknown as { id: string; peran: string; anggota: boolean }[];
         if (!penguji || !["INTERNAL_KEMENKEU", "EKSTERNAL_KEMENKEU"].includes(penguji.peran)) {
           return NextResponse.json({ pesan: "Pilih akun penguji Internal atau Eksternal Kemenkeu yang aktif." }, { status: 400 });
         }
-        const [anggota] = (await klienMentah.unsafe(
-          `SELECT 1 AS ada FROM th_project_members WHERE project_id = $1 AND user_id = $2::uuid`, [projectId, isi.pengujiId],
-        )) as unknown as { ada: number }[];
-        if (!anggota) return NextResponse.json({ pesan: "Penguji harus ditugaskan pada proyek ini terlebih dahulu." }, { status: 400 });
+        if (!penguji.anggota) return NextResponse.json({ pesan: "Penguji harus ditugaskan pada proyek ini terlebih dahulu." }, { status: 400 });
         pengujiId = isi.pengujiId;
       }
 
@@ -105,44 +113,37 @@ export async function POST(req: Request) {
        * bertabrakan dengan yang masih ada — dan tabrakan itu ditolak oleh
        * batasan unik di database, jadi pengguna melihat galat yang membingungkan.
        */
-      let awalan = "S";
-      if (isi.moduleId && UUID.test(isi.moduleId)) {
-        const [m] = (await klienMentah.unsafe(
-          `SELECT kode FROM th_modules WHERE id = $1::uuid AND project_id = $2`, [isi.moduleId, projectId],
-        )) as unknown as { kode: string }[];
-        if (!m) return NextResponse.json({ pesan: "Modul tidak ditemukan di proyek ini." }, { status: 400 });
-        awalan = m.kode;
-      } else if (isi.moduleId) {
-        return NextResponse.json({ pesan: "moduleId tidak sah." }, { status: 400 });
-      }
+      const awalan = isi.moduleId ? proyek.kode_modul! : "S";
       const [baru] = (await klienMentah.begin(async (tx) => {
         // Mencegah dua penambahan serentak menghasilkan kode dan urutan yang sama.
         await tx.unsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`,
           [`psii-testhub-scenario:${projectId}:${fase}:${awalan}`]);
         const [urut] = (await tx.unsafe(
-          `SELECT COALESCE(MAX(NULLIF(regexp_replace(kode, '^.*-', ''), '')::int), 0) AS n
-           FROM th_scenarios WHERE project_id = $1 AND fase = $2 AND kode LIKE $3`,
+          `SELECT
+             (SELECT COALESCE(MAX(NULLIF(regexp_replace(kode, '^.*-', ''), '')::int), 0)
+              FROM th_scenarios WHERE project_id = $1 AND fase = $2 AND kode LIKE $3) AS n,
+             (SELECT COALESCE(MAX(urutan), -1) + 1
+              FROM th_scenarios WHERE project_id = $1 AND fase = $2) AS posisi`,
           [projectId, fase, `${awalan}-%`],
-        )) as unknown as { n: number }[];
+        )) as unknown as { n: number; posisi: number }[];
         const kode = `${awalan}-${String(urut.n + 1).padStart(2, "0")}`;
-        const [pos] = (await tx.unsafe(
-          `SELECT COALESCE(MAX(urutan), -1) + 1 AS n FROM th_scenarios WHERE project_id = $1 AND fase = $2`,
-          [projectId, fase],
-        )) as unknown as { n: number }[];
         const baru = await tx.unsafe(
-          `INSERT INTO th_scenarios
+          `WITH skenario_baru AS (
+             INSERT INTO th_scenarios
              (project_id, module_id, kode, fase, judul, langkah_pengujian, hasil_diharapkan,
               penguji_id, status, catatan_tindak_lanjut, urutan)
-           VALUES ($1,$2::uuid,$3,$4,$5,$6,$7,$8::uuid,'PENDING',$9,$10)
-           RETURNING id, kode, xmin::text AS versi, diubah_pada`,
+             VALUES ($1,$2::uuid,$3,$4,$5,$6,$7,$8::uuid,'PENDING',$9,$10)
+             RETURNING id, kode, xmin::text AS versi, diubah_pada
+           ), audit_baru AS (
+             INSERT INTO th_audit_logs (user_id, project_id, scenario_id, aksi, kolom, nilai_baru)
+             SELECT $11::uuid, $1, s.id, 'tambah_skenario', 'judul', $5 FROM skenario_baru s
+             RETURNING scenario_id
+           )
+           SELECT s.id, s.kode, s.versi, s.diubah_pada
+           FROM skenario_baru s JOIN audit_baru a ON a.scenario_id = s.id`,
           [projectId, isi.moduleId ?? null, kode, fase, judul,
            isi.langkahPengujian ?? null, isi.hasilDiharapkan ?? null,
-           pengujiId, isi.catatanTindakLanjut ?? null, pos.n],
-        );
-        await tx.unsafe(
-          `INSERT INTO th_audit_logs (user_id, project_id, scenario_id, aksi, kolom, nilai_baru)
-           VALUES ($1::uuid, $2, $3::uuid, 'tambah_skenario', 'judul', $4)`,
-          [saya.id, projectId, baru[0].id, judul],
+           pengujiId, isi.catatanTindakLanjut ?? null, urut.posisi, saya.id],
         );
         return baru;
       })) as unknown as { id: string; kode: string; versi: string; diubah_pada: string }[];

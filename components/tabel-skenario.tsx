@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn, STATUS_UJI, labelStatus } from "@/lib/format";
 import { tanggalID } from "@/lib/waktu";
 import { PanelSkenario } from "./panel-skenario";
@@ -21,6 +21,7 @@ export type Modul = { id: string; kode: string; nama: string; urutan: number };
 export type Orang = { id: string; nama: string; peran: string };
 
 const STATUS_PILIHAN = ["PENDING","PASS","FAIL","BLOCKED"];
+const UKURAN_HALAMAN = 100;
 
 /**
  * Tabel skenario — 8 atribut sesuai PRD.
@@ -33,12 +34,13 @@ const STATUS_PILIHAN = ["PENDING","PASS","FAIL","BLOCKED"];
  */
 export function TabelSkenario({
   projectId, fase, skenarioAwal, modul, moduleIdDefault, orang, sayaId, bolehUbah, bolehKelolaSkenario,
-  bolehHapusBukti, bolehAdminHapusSkenario, onDataMutasi, onDraftChange,
+  bolehHapusBukti, bolehAdminHapusSkenario, onDataMutasi, onSkenarioBerubah, onDraftChange,
 }: {
   projectId: string; fase: string; skenarioAwal: Skenario[];
   modul: Modul[]; moduleIdDefault: string | null; orang: Orang[]; sayaId: string; bolehUbah: boolean; bolehKelolaSkenario: boolean;
   bolehHapusBukti: boolean; bolehAdminHapusSkenario: boolean;
   onDataMutasi?: () => void;
+  onSkenarioBerubah?: (id: string, tambalan: Partial<Skenario>) => void;
   onDraftChange?: (active: boolean) => void;
 }) {
   const [data, setData] = useState<Skenario[]>(skenarioAwal);
@@ -55,6 +57,7 @@ export function TabelSkenario({
   const [hapusGalat, setHapusGalat] = useState<string | null>(null);
   const [alasanHapusSkenario, setAlasanHapusSkenario] = useState("");
   const [saring, setSaring] = useState({ status: "", penguji: "", cari: "" });
+  const [halaman, setHalaman] = useState(0);
   // Skenario yang panelnya sedang terbuka. Disimpan sebagai ID, bukan objeknya:
   // objek yang disimpan akan basi begitu datanya diubah di tempat.
   const [bukaPanel, setBukaPanel] = useState<string | null>(null);
@@ -73,6 +76,11 @@ export function TabelSkenario({
 
   useEffect(() => {
     setSaring({ status: "", penguji: "", cari: "" });
+    setHalaman(0);
+    setBukaPanel(null);
+    setKonfirmasiHapus(null);
+    setHapusGalat(null);
+    setAlasanHapusSkenario("");
   }, [projectId, fase, moduleIdDefault]);
 
   const perbaruiData = (ubahData: (baris: Skenario[]) => Skenario[]) => {
@@ -148,6 +156,7 @@ export function TabelSkenario({
         const j = await r.json().catch(() => ({ pesan: "Respons server tidak dapat dibaca." }));
         if (!r.ok) {
           if (j.terbaru) ubah(id, j.terbaru as Partial<Skenario>);
+          if (j.konflik === true || r.status === 409) onDataMutasi?.();
           setPesan({ jenis: "galat", teks: j.pesan ?? "Gagal menyimpan. Draf Anda tetap tersedia." });
           return false;
         }
@@ -165,8 +174,10 @@ export function TabelSkenario({
         }
         if ("moduleId" in tambalan) lokal.module_id = tambalan.moduleId as string | null;
         if ("siapRetest" in tambalan) lokal.siap_retest = tambalan.siapRetest as boolean;
-        ubah(id, { ...lokal, versi: j.versi, diubah_pada: j.diubahPada });
-        onDataMutasi?.();
+        const tersimpan = { ...lokal, versi: j.versi, diubah_pada: j.diubahPada };
+        ubah(id, tersimpan);
+        if ("moduleId" in tambalan) onDataMutasi?.();
+        else onSkenarioBerubah?.(id, tersimpan);
         return true;
       } catch {
         setPesan({ jenis: "galat", teks: "Tidak dapat terhubung. Draf Anda tetap tersedia; coba simpan lagi." });
@@ -248,27 +259,49 @@ export function TabelSkenario({
   };
 
   // ---- penyaringan ----
-  const tersaring = data.filter((s) => {
+  const queryCari = saring.cari.trim().toLowerCase();
+  const tersaring = useMemo(() => data.filter((s) => {
     if (saring.status && s.status !== saring.status) return false;
     if (saring.penguji && s.penguji_id !== saring.penguji) return false;
-    if (saring.cari.trim()) {
-      const q = saring.cari.trim().toLowerCase();
-      if (!s.kode.toLowerCase().includes(q) && !s.judul.toLowerCase().includes(q)) return false;
-    }
+    if (queryCari && !s.kode.toLowerCase().includes(queryCari) && !s.judul.toLowerCase().includes(queryCari)) return false;
     return true;
-  });
-
-  // Kelompokkan per modul, tapi hanya kalau modulnya memang ada.
-  const berModul = modul.length > 0;
-  const kelompok = berModul
-    ? modul.map((m) => ({ modul: m, baris: tersaring.filter((s) => s.module_id === m.id) }))
-        .concat(tersaring.some((s) => !s.module_id)
-          ? [{ modul: { id: "", kode: "—", nama: "Tanpa modul", urutan: 999 }, baris: tersaring.filter((s) => !s.module_id) }]
-          : [])
-        .filter((k) => k.baris.length > 0)
-    : [{ modul: null as Modul | null, baris: tersaring }];
+  }), [data, saring.status, saring.penguji, queryCari]);
+  const jumlahHalaman = Math.max(1, Math.ceil(tersaring.length / UKURAN_HALAMAN));
+  const halamanAktif = Math.min(halaman, jumlahHalaman - 1);
+  const awalHalaman = halamanAktif * UKURAN_HALAMAN;
+  const barisHalaman = useMemo(
+    () => tersaring.slice(awalHalaman, awalHalaman + UKURAN_HALAMAN),
+    [tersaring, awalHalaman],
+  );
+  const kelompok = useMemo(() => {
+    const totalPerModul = new Map<string | null, number>();
+    for (const item of tersaring) totalPerModul.set(item.module_id, (totalPerModul.get(item.module_id) ?? 0) + 1);
+    const barisPerModul = new Map<string | null, Skenario[]>();
+    for (const item of barisHalaman) {
+      const kumpulan = barisPerModul.get(item.module_id) ?? [];
+      kumpulan.push(item);
+      barisPerModul.set(item.module_id, kumpulan);
+    }
+    if (modul.length === 0) return [{ modul: null as Modul | null, baris: barisHalaman, jumlah: tersaring.length }];
+    const hasil: { modul: Modul | null; baris: Skenario[]; jumlah: number }[] = [];
+    for (const item of modul) {
+      const baris = barisPerModul.get(item.id) ?? [];
+      if (baris.length) hasil.push({ modul: item, baris, jumlah: totalPerModul.get(item.id) ?? baris.length });
+    }
+    const tanpaModul = barisPerModul.get(null) ?? [];
+    if (tanpaModul.length) {
+      const deskripsi = modul.find((item) => !item.id)
+        ?? { id: "", kode: "—", nama: "Tanpa modul", urutan: 999 };
+      hasil.push({ modul: deskripsi, baris: tanpaModul, jumlah: totalPerModul.get(null) ?? tanpaModul.length });
+    }
+    return hasil;
+  }, [modul, tersaring, barisHalaman]);
 
   const adaFilterAktif = Boolean(saring.status || saring.penguji || saring.cari.trim());
+  const jumlahTersaringTersimpan = tersaring.filter((x) => !x.id.startsWith("draft:")).length;
+  const jumlahTersimpan = data.filter((x) => !x.id.startsWith("draft:")).length;
+  const adaDrafTersaring = tersaring.some((x) => x.id.startsWith("draft:"));
+  const ubahSaringan = (berikutnya: typeof saring) => { setSaring(berikutnya); setHalaman(0); };
   const terpilih = data.find((x) => x.id === bukaPanel) ?? null;
 
   return (
@@ -279,7 +312,7 @@ export function TabelSkenario({
         <div>
           <label htmlFor="f-status" className="mb-1 block text-[12.5px] font-medium text-tinta-3">Status</label>
           <Select id="f-status" value={saring.status} wrapClassName="w-auto"
-            onChange={(e) => setSaring((s) => ({ ...s, status: e.target.value }))}
+            onChange={(e) => ubahSaringan({ ...saring, status: e.target.value })}
             className="h-9 w-auto min-w-[120px] py-1 text-[13px]">
             <option value="">Semua</option>
             {STATUS_PILIHAN.map((x) => <option key={x} value={x}>{labelStatus(x)}</option>)}
@@ -289,7 +322,7 @@ export function TabelSkenario({
         <div>
           <label htmlFor="f-penguji" className="mb-1 block text-[12.5px] font-medium text-tinta-3">Penguji</label>
           <Select id="f-penguji" value={saring.penguji} wrapClassName="w-full max-w-[180px]"
-            onChange={(e) => setSaring((s) => ({ ...s, penguji: e.target.value }))}
+            onChange={(e) => ubahSaringan({ ...saring, penguji: e.target.value })}
             className="h-9 py-1 text-[13px]">
             <option value="">Semua</option>
             {orang.map((o) => <option key={o.id} value={o.id}>{o.nama}</option>)}
@@ -299,15 +332,30 @@ export function TabelSkenario({
         <div className="min-w-[160px] flex-1">
           <label htmlFor="f-cari" className="mb-1 block text-[12.5px] font-medium text-tinta-3">Cari</label>
           <Input id="f-cari" value={saring.cari} placeholder="ID atau judul skenario"
-            onChange={(e) => setSaring((s) => ({ ...s, cari: e.target.value }))}
+            onChange={(e) => ubahSaringan({ ...saring, cari: e.target.value })}
             className="h-9 text-[14px]" />
         </div>
 
         <p className="text-[13px] text-tinta-3">
-          {tersaring.filter((x) => !x.id.startsWith("draft:")).length} dari {data.filter((x) => !x.id.startsWith("draft:")).length} skenario
-          {tersaring.some((x) => x.id.startsWith("draft:")) && " · draf lokal belum disimpan"}
+          {jumlahTersaringTersimpan} dari {jumlahTersimpan} skenario
+          {adaDrafTersaring && " · draf lokal belum disimpan"}
         </p>
       </div>
+
+      {tersaring.length > UKURAN_HALAMAN && (
+        <nav aria-label="Navigasi halaman skenario" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-garis bg-kartu px-3 py-2">
+          <p aria-live="polite" className="text-[12.5px] text-tinta-3">
+            Menampilkan {awalHalaman + 1}–{Math.min(awalHalaman + UKURAN_HALAMAN, tersaring.length)} dari {tersaring.length} skenario
+          </p>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="secondary" disabled={halamanAktif === 0}
+              onClick={() => setHalaman((n) => Math.max(0, n - 1))} className="min-h-8 px-2.5 py-1 text-[12px]">Sebelumnya</Button>
+            <span className="tabular text-[12.5px] text-tinta-2">Halaman {halamanAktif + 1} dari {jumlahHalaman}</span>
+            <Button type="button" variant="secondary" disabled={halamanAktif + 1 >= jumlahHalaman}
+              onClick={() => setHalaman((n) => Math.min(jumlahHalaman - 1, n + 1))} className="min-h-8 px-2.5 py-1 text-[12px]">Berikutnya</Button>
+          </div>
+        </nav>
+      )}
 
       {pesan && (
         <Feedback kind={pesan.jenis === "galat" ? "error" : "info"} className="mb-3">
@@ -352,7 +400,7 @@ export function TabelSkenario({
           <p className="text-[15px] font-medium text-tinta">Tidak ada skenario yang cocok dengan filter</p>
           <p className="mt-1 text-[13.5px] text-tinta-2">Coba ubah kata pencarian atau reset semua filter.</p>
           {adaFilterAktif && <Button type="button" variant="secondary"
-            onClick={() => setSaring({ status: "", penguji: "", cari: "" })}
+            onClick={() => ubahSaringan({ status: "", penguji: "", cari: "" })}
             className="mt-4 min-h-9 px-3 py-1.5 text-[13px]">Reset filter</Button>}
         </div>
       ) : data.length === 0 ? (
@@ -383,7 +431,7 @@ export function TabelSkenario({
                   </span>
                   {k.modul.nama}
                   <span className="tabular text-[12.5px] font-normal text-tinta-3">
-                    {k.baris.length} skenario
+                    {k.jumlah} skenario
                   </span>
                 </h3>
               )}
