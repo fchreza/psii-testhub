@@ -3,31 +3,16 @@ import { redirect } from "next/navigation";
 import { klienMentah } from "@/db";
 import { Nav } from "@/components/nav";
 import { wajibMasuk, internal, PERAN_PENGUJI } from "@/lib/gerbang";
-import { tanggalID } from "@/lib/waktu";
 import { STATUS_UJI, labelStatus, cn } from "@/lib/format";
-import { labelJenisPengujian } from "@/lib/fase-proyek";
+import { KemajuanProyekDashboard } from "@/components/kemajuan-proyek-dashboard";
+import { kelompokkanModulPerProyek, type ModulDashboard, type ProyekDashboard } from "@/lib/dashboard";
 
 export const dynamic = "force-dynamic";
 
-type Proyek = {
-  id: string; nama: string; unit_bisnis: string | null; tahap: string;
-  aplikasi: string | null; modul: string | null; jenis_pengujian: string;
-  modul_aplikasi: string | null; target_selesai: string | Date | null;
-  total: number; lulus: number; gagal: number; tertunda: number; belum: number;
-};
-type ModulBaris = {
-  project_id: string; proyek: string; kode: string; nama: string;
-  total: number; lulus: number; gagal: number; tertunda: number; belum: number;
-};
 type Tertunda = {
   project_id: string; proyek: string; scenario_id: string; kode: string;
   judul: string; status: string; catatan_tindak_lanjut: string | null;
   penguji_nama: string | null; diubah_pada: string;
-};
-
-const LABEL_TAHAP: Record<string, string> = {
-  PERSIAPAN: "Persiapan", SIT: "SIT", UAT: "UAT",
-  WAITING_SIGNOFF: "Menunggu ttd", SELESAI: "Selesai",
 };
 
 /**
@@ -84,7 +69,7 @@ export default async function HalamanDashboard() {
            count(s.id) FILTER (WHERE s.status = 'PENDING')::int AS belum
     FROM th_modules m
     JOIN th_projects p ON p.id = m.project_id
-    LEFT JOIN th_scenarios s ON s.module_id = m.id
+    LEFT JOIN th_scenarios s ON s.module_id = m.id AND s.project_id = p.id
     WHERE ${saringProyek}
     GROUP BY p.id, p.nama, m.kode, m.nama, m.urutan
     HAVING count(s.id) > 0
@@ -106,8 +91,9 @@ export default async function HalamanDashboard() {
   const [proyekRows, modulRows, tindakRows] = await Promise.all([
     proyekQuery, perModulQuery, perluTindakQuery,
   ]);
-  const proyek = proyekRows as unknown as Proyek[];
-  const perModul = modulRows as unknown as ModulBaris[];
+  const proyek = proyekRows as unknown as ProyekDashboard[];
+  const perModul = modulRows as unknown as ModulDashboard[];
+  const modulPerProyek = kelompokkanModulPerProyek(perModul);
   const perluTindak = tindakRows as unknown as Tertunda[];
 
   const jumlah = proyek.reduce(
@@ -158,139 +144,7 @@ export default async function HalamanDashboard() {
               ))}
             </section>
 
-            {/* Perbandingan antar proyek — bilah horizontal, disortir dari yang
-                paling tertinggal supaya yang butuh perhatian ada di atas. */}
-            <section aria-label="Kemajuan per proyek" className="mb-6">
-              <h2 className="mb-2 text-[15px] font-semibold text-tinta">Kemajuan per proyek</h2>
-              <div className="overflow-hidden rounded-lg border border-garis bg-kartu">
-                <table className="w-full border-collapse text-[13.5px]">
-                  <caption className="sr-only">
-                    Tingkat kelulusan tiap proyek. Angka dihitung dari seluruh skenario,
-                    termasuk yang belum diuji.
-                  </caption>
-                  <thead>
-                    <tr className="border-b border-garis bg-kanvas text-left">
-                      {["Proyek","Jenis pengujian","Tahap","Kelulusan","Lulus / total","Kendala","Target"].map((h) => (
-                        <th key={h} scope="col"
-                          className="whitespace-nowrap px-3 py-2.5 text-[12px] font-semibold uppercase tracking-wide text-tinta-3">
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...proyek]
-                      .sort((a, b) => {
-                        const pa = a.total ? a.lulus / a.total : 0;
-                        const pb = b.total ? b.lulus / b.total : 0;
-                        return pa - pb;
-                      })
-                      .map((p) => {
-                        const persen = p.total > 0 ? Math.round((p.lulus / p.total) * 100) : 0;
-                        const kendala = p.gagal + p.tertunda;
-                        return (
-                          <tr key={p.id} className="border-b border-garis last:border-0">
-                            <td className="px-3 py-2.5">
-                              <Link href={`/proyek/${p.id}`} className="font-medium text-tinta hover:text-aksi">
-                                {p.nama}
-                              </Link>
-                              {(p.aplikasi ?? p.modul_aplikasi) || p.modul ? (
-                                <span className="mt-0.5 block text-[12px] text-tinta-3">
-                                  {[p.aplikasi ?? p.modul_aplikasi, p.modul].filter(Boolean).join(" · ")}
-                                </span>
-                              ) : null}
-                            </td>
-                            <td className="px-3 py-2.5 text-tinta-2">{labelJenisPengujian(p.jenis_pengujian)}</td>
-                            <td className="whitespace-nowrap px-3 py-2.5 text-[12.5px] text-tinta-2">
-                              {LABEL_TAHAP[p.tahap] ?? p.tahap}
-                            </td>
-                            <td className="px-3 py-2.5">
-                              <span className="flex items-center gap-2">
-                                {/* Bilah: lebar proporsional, warna mengikuti tingkat.
-                                    Angka persen selalu ada di sebelahnya, jadi warna
-                                    bukan satu-satunya pembawa makna. */}
-                                <span className="h-2 w-24 shrink-0 overflow-hidden rounded-full bg-kanvas" aria-hidden>
-                                  <span className={cn("block h-full rounded-full",
-                                    persen >= 80 ? "bg-lulus" : persen >= 40 ? "bg-tertunda" : "bg-gagal")}
-                                    style={{ width: `${persen === 0 ? 0 : Math.max(3, persen)}%` }} />
-                                </span>
-                                <span className="tabular text-[13px] font-medium text-tinta">{persen}%</span>
-                              </span>
-                            </td>
-                            <td className="tabular whitespace-nowrap px-3 py-2.5 text-tinta-2">
-                              {p.lulus} / {p.total}
-                            </td>
-                            <td className="whitespace-nowrap px-3 py-2.5">
-                              {kendala > 0 ? (
-                                <span className="text-[12.5px] font-medium text-gagal">
-                                  {p.gagal > 0 && `${p.gagal} gagal`}
-                                  {p.gagal > 0 && p.tertunda > 0 && " · "}
-                                  {p.tertunda > 0 && `${p.tertunda} tertunda`}
-                                </span>
-                              ) : (
-                                <span className="text-[12.5px] text-tinta-3">—</span>
-                              )}
-                            </td>
-                            <td className="tabular whitespace-nowrap px-3 py-2.5 text-[12.5px] text-tinta-2">
-                              {p.target_selesai ? tanggalID(p.target_selesai) : "—"}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-
-            {/* Kemajuan per modul. Inilah "chart" yang diminta: bilah bertumpuk
-                per modul, dengan angka tepat di sebelahnya. */}
-            {perModul.length > 0 && (
-              <section aria-label="Kemajuan per modul" className="mb-6">
-                <h2 className="mb-2 text-[15px] font-semibold text-tinta">Kemajuan per modul</h2>
-                <div className="space-y-3 rounded-lg border border-garis bg-kartu px-5 py-4">
-                  {perModul.map((m) => {
-                    const p = (n: number) => (m.total > 0 ? (n / m.total) * 100 : 0);
-                    return (
-                      <div key={`${m.project_id}-${m.kode}`}>
-                        <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                          <p className="text-[13.5px] text-tinta">
-                            <span className="tabular mr-1.5 rounded-sm bg-kanvas px-1.5 py-0.5 text-[12px] text-tinta-2">
-                              {m.kode}
-                            </span>
-                            {m.nama}
-                          </p>
-                          <p className="tabular text-[12.5px] text-tinta-3">
-                            {m.lulus}/{m.total} lulus
-                            {m.gagal > 0 && <span className="text-gagal"> · {m.gagal} gagal</span>}
-                            {m.tertunda > 0 && <span className="text-tertunda"> · {m.tertunda} tertunda</span>}
-                          </p>
-                        </div>
-                        {/* Bilah bertumpuk: lulus, gagal, tertunda, belum.
-                            Tiap bagian punya warna DAN tercantum angkanya di atas,
-                            jadi tidak ada makna yang hanya dibawa warna. */}
-                        <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-kanvas"
-                          role="img"
-                          aria-label={`${m.nama}: ${m.lulus} lulus, ${m.gagal} gagal, ${m.tertunda} tertunda, ${m.belum} belum diuji dari ${m.total} skenario`}>
-                          {m.lulus > 0 && <span className="bg-lulus" style={{ width: `${p(m.lulus)}%` }} />}
-                          {m.gagal > 0 && <span className="bg-gagal" style={{ width: `${p(m.gagal)}%` }} />}
-                          {m.tertunda > 0 && <span className="bg-tertunda" style={{ width: `${p(m.tertunda)}%` }} />}
-                          {m.belum > 0 && <span className="bg-garis-kuat" style={{ width: `${p(m.belum)}%` }} />}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div className="flex flex-wrap gap-4 border-t border-garis pt-3 text-[12.5px] text-tinta-3">
-                    {([["bg-lulus","Lulus"],["bg-gagal","Gagal"],["bg-tertunda","Tertunda"],["bg-garis-kuat","Belum diuji"]] as [string,string][])
-                      .map(([w, l]) => (
-                        <span key={l} className="flex items-center gap-1.5">
-                          <span className={cn("h-2.5 w-2.5 rounded-xs", w)} aria-hidden />
-                          {l}
-                        </span>
-                      ))}
-                  </div>
-                </div>
-              </section>
-            )}
+            <KemajuanProyekDashboard proyek={proyek} modulPerProyek={modulPerProyek} />
 
             {/* Daftar yang perlu tindak lanjut — bagian yang paling sering
                 ditindaklanjuti, jadi dibuat bisa langsung diklik. */}
