@@ -3,6 +3,7 @@ import { finalisasiUpload } from "@/lib/alur-bukti";
 import { validasiMetadataObjek } from "@/lib/validasi-bukti";
 import { BATAS_BUKTI, hapusObjek, inspeksiObjek, promosikanObjek } from "@/lib/simpanan";
 import { PREFIX_KUNCI_HAPUS_SKENARIO } from "@/lib/keamanan-hapus-skenario";
+import { bacaAuditBukti, serialisasiAuditBukti } from "@/lib/audit-bukti";
 
 type IntentUpload = {
   id: string;
@@ -50,10 +51,48 @@ async function tandaiStagingDibersihkan(intent: IntentUpload): Promise<void> {
 
 async function selesaikanPenghapusan(path: string, id: string): Promise<void> {
   await hapusObjek(path);
-  await klienMentah.unsafe(
-    `UPDATE th_evidence SET status = 'DELETED', deleted_at = COALESCE(deleted_at, now())
-     WHERE id = $1::uuid AND status = 'DELETE_PENDING'`, [id],
-  );
+  await klienMentah.begin(async (tx) => {
+    const [bukti] = (await tx.unsafe(
+      `SELECT scenario_id, status FROM th_evidence WHERE id = $1::uuid FOR UPDATE`, [id],
+    )) as unknown as { scenario_id: string; status: string }[];
+    if (!bukti) throw new Error("Bukti tombstone tidak ditemukan saat cleanup.");
+    if (bukti.status === "DELETE_PENDING") {
+      await tx.unsafe(
+        `UPDATE th_evidence SET status = 'DELETED', deleted_at = COALESCE(deleted_at, now())
+         WHERE id = $1::uuid AND status = 'DELETE_PENDING'`, [id],
+      );
+    } else if (bukti.status !== "DELETED") {
+      throw new Error("Status bukti tidak lagi menunggu penghapusan.");
+    }
+
+    const [audit] = (await tx.unsafe(
+      `SELECT id, nilai_baru FROM th_audit_logs
+       WHERE scenario_id = $1::uuid AND aksi = 'hapus_bukti'
+         AND kolom = 'evidence_event' AND nilai_lama = $2
+       ORDER BY pada DESC, id DESC LIMIT 1 FOR UPDATE`, [bukti.scenario_id, id],
+    )) as unknown as { id: string; nilai_baru: string | null }[];
+    if (audit) {
+      const metadata = bacaAuditBukti(audit.nilai_baru);
+      if (!metadata) throw new Error("Metadata audit penghapusan bukti tidak sah.");
+      if (metadata.outcome !== "deleted") {
+        await tx.unsafe(
+          `UPDATE th_audit_logs SET nilai_baru = $2, pada = now() WHERE id = $1::bigint`,
+          [audit.id, serialisasiAuditBukti("deleted", metadata.reason)],
+        );
+      }
+      return;
+    }
+
+    // Rekonsiliasi juga menyelesaikan tombstone lama yang dicatat sebelum ID
+    // bukti disertakan dalam metadata audit. Jangan menandai cleanup selesai
+    // bila sama sekali tidak ada jejak penghapusan.
+    const [auditLama] = (await tx.unsafe(
+      `SELECT id FROM th_audit_logs
+       WHERE scenario_id = $1::uuid AND aksi = 'hapus_bukti'
+       ORDER BY pada DESC, id DESC LIMIT 1`, [bukti.scenario_id],
+    )) as unknown as { id: string }[];
+    if (!auditLama) throw new Error("Jejak audit penghapusan bukti tidak ditemukan.");
+  });
 }
 
 /**
@@ -67,7 +106,7 @@ export async function finalisasiIntentUpload(id: string, userId?: string): Promi
   if (intent.status === "COMPLETED") {
     if (!intent.staging_cleaned_at || new Date(intent.expires_at).getTime() > Date.now()) {
       try { await tandaiStagingDibersihkan(intent); }
-      catch (error) { console.error("[bukti] staging selesai belum dapat dibersihkan", intent.id, error); }
+      catch (error) { console.error("[bukti] staging selesai belum dapat dibersihkan", intent.id, error instanceof Error ? error.name : "UnknownError"); }
     }
     return intent.evidence_id ? { status: "COMPLETED", evidenceId: intent.evidence_id } : null;
   }
@@ -94,7 +133,7 @@ export async function finalisasiIntentUpload(id: string, userId?: string): Promi
        WHERE id = $1::uuid AND status = 'UPLOADING'`, [intent.id, ketidakcocokan],
     );
     try { await tandaiStagingDibersihkan(intent); }
-    catch (error) { console.error("[bukti] object upload ditolak belum dapat dibersihkan", intent.id, error); }
+    catch (error) { console.error("[bukti] object upload ditolak belum dapat dibersihkan", intent.id, error instanceof Error ? error.name : "UnknownError"); }
     return { status: "REJECTED", pesan: ketidakcocokan };
   }
 
@@ -124,9 +163,9 @@ export async function finalisasiIntentUpload(id: string, userId?: string): Promi
           [intent.scenario_id, intent.final_path, intent.nama_asli, intent.tipe, intent.ukuran, intent.user_id],
         )) as unknown as { id: string }[];
         await tx.unsafe(
-          `INSERT INTO th_audit_logs (user_id, project_id, scenario_id, aksi, kolom, nilai_baru)
-           VALUES ($1::uuid, $2, $3::uuid, 'unggah_bukti', 'bukti', $4)`,
-          [intent.user_id, intent.project_id, intent.scenario_id, intent.nama_asli],
+          `INSERT INTO th_audit_logs (user_id, project_id, scenario_id, aksi, kolom, nilai_lama, nilai_baru)
+           VALUES ($1::uuid, $2, $3::uuid, 'unggah_bukti', 'evidence_event', $4, $5)`,
+          [intent.user_id, intent.project_id, intent.scenario_id, evidence.id, serialisasiAuditBukti("uploaded")],
         );
         await tx.unsafe(
           `UPDATE th_evidence_uploads
@@ -136,7 +175,7 @@ export async function finalisasiIntentUpload(id: string, userId?: string): Promi
         return evidence.id;
       }),
       bersihkanStaging: () => tandaiStagingDibersihkan(intent),
-      catatGalatCleanup: (error) => console.error("[bukti] staging completed belum dapat dibersihkan", intent.id, error),
+      catatGalatCleanup: (error) => console.error("[bukti] staging completed belum dapat dibersihkan", intent.id, error instanceof Error ? error.name : "UnknownError"),
     },
   );
   return { status: "COMPLETED", evidenceId: tersimpan };
@@ -167,7 +206,7 @@ export async function rekonsiliasiBukti(batas = 100): Promise<{ selesai: number;
         selesai++;
       }
     } catch (error) {
-      console.error("[bukti] rekonsiliasi upload gagal", intent.id, error);
+      console.error("[bukti] rekonsiliasi upload gagal", intent.id, error instanceof Error ? error.name : "UnknownError");
       gagal++;
     }
   }
@@ -183,7 +222,7 @@ export async function rekonsiliasiBukti(batas = 100): Promise<{ selesai: number;
       await selesaikanPenghapusan(bukti.path, bukti.id);
       selesai++;
     } catch (error) {
-      console.error("[bukti] rekonsiliasi delete gagal", bukti.id, error);
+      console.error("[bukti] rekonsiliasi delete gagal", bukti.id, error instanceof Error ? error.name : "UnknownError");
       gagal++;
     }
   }

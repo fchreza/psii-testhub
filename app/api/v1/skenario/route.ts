@@ -10,6 +10,7 @@ import { perluAlasanHapusBuktiTerakhir, versiMasihAktual } from "@/lib/validasi-
 import { sebabBlokirHapusSkenario, sebabTundaHapusAdmin, pathKunciHapusSkenario } from "@/lib/keamanan-hapus-skenario";
 import { finalisasiIntentUpload } from "@/lib/bukti-operasi";
 import { hapusObjek } from "@/lib/simpanan";
+import { bacaAuditBukti, serialisasiAuditBukti } from "@/lib/audit-bukti";
 
 export const dynamic = "force-dynamic";
 
@@ -393,9 +394,9 @@ export async function POST(req: Request) {
         if (!versiMasihAktual(isi.versi, ada.versi)) return { status: "conflict" as const };
 
         const bukti = (await tx.unsafe(
-          `SELECT id, path, nama_asli, status FROM th_evidence
+          `SELECT id, path, status FROM th_evidence
            WHERE scenario_id = $1::uuid ORDER BY diunggah_pada, id FOR UPDATE`, [scenarioId],
-        )) as unknown as { id: string; path: string; nama_asli: string | null; status: string }[];
+        )) as unknown as { id: string; path: string; status: string }[];
         const unggahan = (await tx.unsafe(
           `SELECT id, staging_path, final_path, status, expires_at FROM th_evidence_uploads
            WHERE scenario_id = $1::uuid ORDER BY dibuat_pada, id FOR UPDATE`, [scenarioId],
@@ -458,9 +459,9 @@ export async function POST(req: Request) {
           await tx.unsafe(`UPDATE th_evidence SET status = 'DELETE_PENDING' WHERE id = $1::uuid AND status = 'READY'`, [item.id]);
           await tx.unsafe(
             `INSERT INTO th_audit_logs (user_id, project_id, scenario_id, aksi, kolom, nilai_lama, nilai_baru)
-             VALUES ($1::uuid, $2, $3::uuid, 'hapus_bukti', 'bukti', $4, $5)`,
-            [saya.id, projectId, scenarioId, item.nama_asli ?? item.path,
-             alasan || `Dihapus bersama skenario ${ada.kode} oleh Admin.`],
+             VALUES ($1::uuid, $2, $3::uuid, 'hapus_bukti', 'evidence_event', $4, $5)`,
+            [saya.id, projectId, scenarioId, item.id,
+             serialisasiAuditBukti("pending", alasan || `Dihapus bersama skenario ${ada.kode} oleh Admin.`)],
           );
         }
 
@@ -491,6 +492,7 @@ export async function POST(req: Request) {
           versi: versiPersiapan,
           kode: ada.kode,
           judul: ada.judul,
+          bukti: buktiPengguna.map(({ id, path, status }) => ({ id, path, status })),
           objek,
           unggahan: unggahan.map((item) => ({ id: item.id, staging_path: item.staging_path, final_path: item.final_path })),
         };
@@ -532,17 +534,42 @@ export async function POST(req: Request) {
           berhasil.add(path);
         } catch (error) {
           gagal.add(path);
-          console.error("[skenario] cleanup objek bukti tertunda", { scenarioId, path, error });
+          console.error("[skenario] cleanup objek tertunda", {
+            scenarioId,
+            jenisGalat: error instanceof Error ? error.name : "UnknownError",
+          });
         }
       }
 
       if (gagal.size) {
         await klienMentah.begin(async (tx) => {
-          for (const path of berhasil) {
+          for (const item of hasilPersiapan.bukti.filter((b) => berhasil.has(b.path))) {
             await tx.unsafe(
               `UPDATE th_evidence SET status = 'DELETED', deleted_at = COALESCE(deleted_at, now())
-               WHERE scenario_id = $1::uuid AND path = $2 AND status <> 'DELETED'`, [scenarioId, path],
+               WHERE id = $1::uuid AND status <> 'DELETED'`, [item.id],
             );
+            const [audit] = (await tx.unsafe(
+              `SELECT id, nilai_baru FROM th_audit_logs
+               WHERE scenario_id = $1::uuid AND aksi = 'hapus_bukti'
+                 AND kolom = 'evidence_event' AND nilai_lama = $2
+               ORDER BY pada DESC, id DESC LIMIT 1 FOR UPDATE`, [scenarioId, item.id],
+            )) as unknown as { id: string; nilai_baru: string | null }[];
+            if (audit) {
+              const metadata = bacaAuditBukti(audit.nilai_baru);
+              if (!metadata) throw new Error("Metadata audit penghapusan bukti tidak sah.");
+              if (metadata.outcome !== "deleted") {
+                await tx.unsafe(
+                  `UPDATE th_audit_logs SET nilai_baru = $2, pada = now() WHERE id = $1::bigint`,
+                  [audit.id, serialisasiAuditBukti("deleted", metadata.reason)],
+                );
+              }
+            } else {
+              const [auditLama] = (await tx.unsafe(
+                `SELECT id FROM th_audit_logs WHERE scenario_id = $1::uuid AND aksi = 'hapus_bukti'
+                 ORDER BY pada DESC, id DESC LIMIT 1`, [scenarioId],
+              )) as unknown as { id: string }[];
+              if (!auditLama) throw new Error("Jejak audit penghapusan bukti tidak ditemukan.");
+            }
           }
           for (const item of hasilPersiapan.unggahan) {
             if ([item.staging_path, item.final_path].some((path) => gagal.has(path))) {
@@ -572,10 +599,34 @@ export async function POST(req: Request) {
           [scenarioId, pathKunci],
         )) as unknown as { id: string }[];
         if (!marker) return { status: "marker_missing" as const };
-        await tx.unsafe(
-          `UPDATE th_evidence SET status = 'DELETED', deleted_at = COALESCE(deleted_at, now())
-           WHERE scenario_id = $1::uuid AND path <> $2 AND status <> 'DELETED'`, [scenarioId, pathKunci],
-        );
+        for (const item of hasilPersiapan.bukti) {
+          await tx.unsafe(
+            `UPDATE th_evidence SET status = 'DELETED', deleted_at = COALESCE(deleted_at, now())
+             WHERE id = $1::uuid AND status <> 'DELETED'`, [item.id],
+          );
+          const [audit] = (await tx.unsafe(
+            `SELECT id, nilai_baru FROM th_audit_logs
+             WHERE scenario_id = $1::uuid AND aksi = 'hapus_bukti'
+               AND kolom = 'evidence_event' AND nilai_lama = $2
+             ORDER BY pada DESC, id DESC LIMIT 1 FOR UPDATE`, [scenarioId, item.id],
+          )) as unknown as { id: string; nilai_baru: string | null }[];
+          if (audit) {
+            const metadata = bacaAuditBukti(audit.nilai_baru);
+            if (!metadata) throw new Error("Metadata audit penghapusan bukti tidak sah.");
+            if (metadata.outcome !== "deleted") {
+              await tx.unsafe(
+                `UPDATE th_audit_logs SET nilai_baru = $2, pada = now() WHERE id = $1::bigint`,
+                [audit.id, serialisasiAuditBukti("deleted", metadata.reason)],
+              );
+            }
+          } else {
+            const [auditLama] = (await tx.unsafe(
+              `SELECT id FROM th_audit_logs WHERE scenario_id = $1::uuid AND aksi = 'hapus_bukti'
+               ORDER BY pada DESC, id DESC LIMIT 1`, [scenarioId],
+            )) as unknown as { id: string }[];
+            if (!auditLama) throw new Error("Jejak audit penghapusan bukti tidak ditemukan.");
+          }
+        }
         await tx.unsafe(
           `INSERT INTO th_audit_logs (user_id, project_id, scenario_id, aksi, kolom, nilai_lama, nilai_baru)
            VALUES ($1::uuid, $2, $3::uuid, 'hapus_skenario', 'judul', $4, $5)`,
@@ -596,8 +647,10 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ pesan: `Aksi tidak dikenal: ${isi.aksi}` }, { status: 400 });
   } catch (e) {
-    const pesan = e instanceof Error ? e.message : String(e);
-    console.error("[skenario]", isi.aksi, pesan);
+    console.error("[skenario] gagal memproses", {
+      aksi: isi.aksi,
+      jenisGalat: e instanceof Error ? e.name : "UnknownError",
+    });
     return NextResponse.json({ pesan: "Gagal menyimpan. Periksa koneksi dan coba lagi." }, { status: 500 });
   }
 }
