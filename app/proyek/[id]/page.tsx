@@ -13,6 +13,7 @@ import { MetadataProyekProvider } from "@/components/metadata-proyek-state";
 import { NamaProyek } from "@/components/nama-proyek";
 import { TombolHapusProyek } from "@/components/tombol-hapus-proyek";
 import { AkunUjiProyek } from "@/components/akun-uji-proyek";
+import { LaporanFinalProyek } from "@/components/laporan-final-proyek";
 import { faseUntukProyek, type FasePengujian } from "@/lib/fase-proyek";
 import { bolehLihatAkunUji, bolehKelolaAkunUji } from "@/lib/aturan-peran";
 
@@ -56,6 +57,7 @@ export default async function HalamanProyek({
   const bolehUbah = bolehUbahEksekusi(saya.peran);
   const bolehHapusBuktiDiProyek = bolehHapusBukti(saya.peran);
   const bolehAdminHapusSkenario = bolehLewatiGuardHapusSkenario(saya.peran);
+  const bolehLihatLaporanFinal = ["ADMIN", "INTERNAL_PSII", "PIMPINAN"].includes(saya.peran);
 
   const jenisPengujian = p.jenis_pengujian;
   const faseTersedia = faseUntukProyek(jenisPengujian);
@@ -175,6 +177,9 @@ export default async function HalamanProyek({
               <AkunUjiProyek projectId={id} bolehKelola={bolehKelolaAkunUji(saya.peran)} />
             )}
           </InformasiProyek>
+          {bolehLihatLaporanFinal && (
+            <LaporanFinalProyek projectId={id} bolehGenerate={saya.peran === "ADMIN" || saya.peran === "INTERNAL_PSII"} />
+          )}
         </MetadataProyekProvider>
 
         {kelolaProyek && (

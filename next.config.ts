@@ -12,5 +12,8 @@ const nextConfig: NextConfig = {
    * "berhasil" tapi isinya bukan proyek ini.
    */
   outputFileTracingRoot: __dirname,
+  outputFileTracingIncludes: {
+    "/*": ["./public/fonts/DejaVuSans.ttf", "./public/fonts/DejaVuSans-Bold.ttf"],
+  },
 };
 export default nextConfig;

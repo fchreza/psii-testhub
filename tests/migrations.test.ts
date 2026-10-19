@@ -13,6 +13,7 @@ const MIGRASI = [
   "db/migrasi-005-ketahanan-operasional.sql",
   "db/migrasi-006-akun-uji.sql",
   "db/migrasi-007-multi-akun-uji.sql",
+  "db/migrasi-008-laporan-final.sql",
 ];
 
 async function databaseUji() {
@@ -21,7 +22,7 @@ async function databaseUji() {
   return db;
 }
 
-test("migrasi 001–007 terpasang bersih dan seluruh skema wajib tersedia", async () => {
+test("migrasi 001–008 terpasang bersih dan seluruh skema wajib tersedia", async () => {
   const db = await databaseUji();
   try {
     const [tabel, kolom, indeks, peran] = await Promise.all([
@@ -52,6 +53,13 @@ test("schema gate fails closed on a missing table/column/index or legacy role", 
   assert.ok(missing.includes("kolom th_evidence.status"));
   assert.ok(missing.includes("indeks th_evidence_status_idx"));
   assert.ok(missing.includes("role legacy PM"));
+});
+
+test("runner hanya mengizinkan migrasi 008 dengan flag persetujuan khusus", () => {
+  const runner = readFileSync("scripts/migrasi.ts", "utf8");
+  assert.match(runner, /"db\/migrasi-008-laporan-final\.sql"/);
+  assert.match(runner, /"--setuju-migrasi-008"/);
+  assert.match(runner, /Migrasi 008 membutuhkan flag --setuju-migrasi-008/);
 });
 
 test("bukti dan intent upload melindungi cascade; audit penghapusan tetap tersimpan", async () => {
