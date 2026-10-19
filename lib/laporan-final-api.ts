@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { bolehGenerateLaporan, bolehLihatLaporan, layakLaporan, perluPembaruan, teksLaporan, tokenPratinjau } from "@/lib/laporan-final";
 import { bacaSumberLaporan } from "@/lib/laporan-final-data";
+import { korelasiLaporan, metadataGalatLaporan } from "@/lib/laporan-final-error";
 import type { SnapshotLaporan } from "@/lib/laporan-final-types";
 
 const ID_PROYEK = /^PRJ-\d{3,}$/;
@@ -14,6 +15,7 @@ export function handlerLaporan({ db: klienMentah, auth: wajibMasukApi, pdf: buat
   pdf: typeof import("./laporan-final-pdf").buatPdfLaporan;
 }) {
 async function GET(req: Request) {
+  const correlationId = korelasiLaporan(req);
   const auth = await wajibMasukApi();
   if ("tolak" in auth) return auth.tolak;
   if (!bolehLihatLaporan(auth.pengguna.peran)) return json({ pesan: "Anda tidak memiliki akses laporan final." }, 403);
@@ -31,12 +33,13 @@ async function GET(req: Request) {
           dibuatOleh: r.nama_penyusun, perluPembaruan: perluPembaruan(r.sidik_sumber, current.sidikSumber) })) });
     });
   } catch (error) {
-    console.error("[laporan-final] daftar gagal", { code: (error as { code?: string }).code });
-    return json({ pesan: "Laporan final belum dapat dimuat. Pastikan migrasi 008 telah disetujui dan terpasang." }, 503);
+    console.error("[laporan-final] daftar gagal", metadataGalatLaporan(error, correlationId));
+    return json({ pesan: `Daftar laporan final belum dapat dimuat. Silakan coba lagi atau sampaikan referensi galat kepada pengelola. Referensi: ${correlationId}.`, correlationId }, 503);
   }
 }
 
 async function POST(req: Request) {
+  const correlationId = korelasiLaporan(req);
   const auth = await wajibMasukApi();
   if ("tolak" in auth) return auth.tolak;
   if (!bolehGenerateLaporan(auth.pengguna.peran)) return json({ pesan: "Hanya Admin/Internal PSII dapat membuat laporan final." }, 403);
@@ -66,16 +69,17 @@ async function POST(req: Request) {
       await tx.unsafe(`INSERT INTO th_final_reports
         (id,project_id,versi,dibuat_pada,dibuat_oleh,nama_penyusun,sidik_sumber,snapshot,pdf)
         VALUES ($1::uuid,$2,$3,$4::timestamptz,$5::uuid,$6,$7,$8::jsonb,$9::bytea)`,
-        [id,body.projectId,versi,snapshot.dibuatPada,auth.pengguna.id,snapshot.dibuatOleh,current.sidikSumber,JSON.stringify(snapshot),pdf]);
+        [id,body.projectId,versi,snapshot.dibuatPada,auth.pengguna.id,snapshot.dibuatOleh,current.sidikSumber,tx.json(snapshot),pdf]);
       await tx.unsafe(`INSERT INTO th_audit_logs(user_id,project_id,aksi,kolom,nilai_baru)
         VALUES ($1::uuid,$2,'buat_laporan_final','laporan_final',$3)`, [auth.pengguna.id,body.projectId,JSON.stringify({ id,versi })]);
       return json({ id, versi }, 201);
     });
   } catch (error) {
-    const code = (error as { code?: string }).code;
+    const metadata = metadataGalatLaporan(error, correlationId);
+    const code = metadata.code;
     if (code === "23505" || code === "40001") return json({ pesan: "Laporan lain telah diterbitkan atau data berubah. Buka ulang pratinjau." }, 409);
-    console.error("[laporan-final] penerbitan gagal", { code });
-    return json({ pesan: "Laporan gagal dibuat; tidak ada versi parsial yang diterbitkan. Coba lagi setelah memeriksa kesiapan migrasi." }, 503);
+    console.error("[laporan-final] penerbitan gagal", metadata);
+    return json({ pesan: `Laporan gagal dibuat; tidak ada versi parsial yang diterbitkan. Buka ulang pratinjau sebelum mencoba lagi. Jika tetap gagal, sampaikan referensi galat kepada pengelola. Referensi: ${correlationId}.`, correlationId }, 503);
   }
 }
 

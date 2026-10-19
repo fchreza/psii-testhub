@@ -1,6 +1,7 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import postgres from "postgres";
 import { PGlite } from "@electric-sql/pglite";
 import { NextResponse } from "next/server";
 import { handlerLaporan } from "../lib/laporan-final-api";
@@ -16,24 +17,47 @@ const MIGRASI = [
 const USER_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const PDF_BYTES = Buffer.from("%PDF-1.7\nsynthetic-final-report-pdf\n%%EOF\n");
 type Peran = "ADMIN" | "PIMPINAN" | "INTERNAL_PSII" | "INTERNAL_KEMENKEU" | "EKSTERNAL_KEMENKEU";
-type Queryable = { unsafe: (sql: string, params?: unknown[]) => Promise<Record<string, unknown>[]> };
+// No queries are sent through this driver: use its actual public JSON wrapper
+// and configured JSONB serializer, then execute the encoded value in PGlite.
+const jsonDriver = postgres("postgres://synthetic:synthetic@127.0.0.1:1/synthetic");
+after(() => jsonDriver.end());
+type Queryable = { json: typeof jsonDriver.json; unsafe: (sql: string, params?: unknown[]) => Promise<Record<string, unknown>[]> };
 type Adapter = Queryable & { begin: (options: string, fn: (tx: Queryable) => Promise<Response>) => Promise<Response> };
 
 async function queryRows<T>(db: PGlite, sql: string, params: unknown[] = []): Promise<T[]> {
   return (await db.query<T>(sql, params)).rows;
 }
 
-async function rig() {
+async function rig(options: { failAudit?: boolean } = {}) {
   const raw = new PGlite();
   for (const file of MIGRASI) await raw.exec(readFileSync(file, "utf8"));
   let queries = 0;
+  const jsonBindings: { type: number; value: unknown }[] = [];
   const wrap = (connection: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>; exec: (sql: string) => Promise<unknown> }): Queryable => ({
+    json: jsonDriver.json,
     async unsafe(sql, params = []) {
       queries++;
       // PGlite does not implement advisory locks. The real transaction and all
       // report/source SQL still run against PGlite; only this lock is a no-op.
       if (/pg_advisory_xact_lock\s*\(/i.test(sql)) return [];
-      return (await connection.query(sql, params)).rows;
+      if (options.failAudit && /INSERT INTO th_audit_logs/i.test(sql)) {
+        // Fail with a real SQL error AFTER inserting the report, not before it.
+        return (await connection.query("INSERT INTO th_audit_logs (aksi) VALUES (NULL)")).rows;
+      }
+      const encoded = [...params];
+      for (const match of sql.matchAll(/\$(\d+)::jsonb\b/gi)) {
+        const index = Number(match[1]) - 1;
+        const parameter = encoded[index];
+        const typed = parameter && typeof parameter === "object" && "type" in parameter && "value" in parameter
+          ? parameter as { type: number; value: unknown } : null;
+        // postgres-js ParameterDescription fills an untyped string's OID
+        // from the explicit ::jsonb cast before Bind applies this serializer.
+        const type = typed?.type ?? 3802;
+        const value = typed ? typed.value : parameter;
+        jsonBindings.push({ type, value });
+        encoded[index] = jsonDriver.options.serializers[type](value);
+      }
+      return (await connection.query(sql, encoded)).rows;
     },
   });
   const db: Adapter = {
@@ -62,7 +86,7 @@ async function rig() {
   const pdfHandler = handlerPdfLaporan({ db: db as never, auth: auth as never });
   return {
     raw, db, laporan, pdfHandler, setRole(value: Peran | null) { role = value; },
-    get queries() { return queries; }, get authCalls() { return authCalls; }, get rendered() { return rendered; },
+    get jsonBindings() { return jsonBindings; }, get queries() { return queries; }, get authCalls() { return authCalls; }, get rendered() { return rendered; },
   };
 }
 
@@ -244,4 +268,77 @@ test("actual source reader includes only UAT, groups unassigned scenarios, compu
     assert.equal(serialized.includes(secret), false, `forbidden source value leaked: ${secret}`);
   }
   assert.equal(byCode.A.skenario[0].bukti.length, 1, "only an internal evidence reference is exposed");
+});
+
+
+test("postgres-js JSONB binding stores an object, not a double-encoded JSON string, together with its audit", async t => {
+  const r = await rig(); t.after(() => r.raw.close());
+  await seedProject(r);
+  const post = (payload: unknown) => r.laporan.POST(req("/api/laporan-final", { method: "POST", body: JSON.stringify(payload) }));
+  const preview = await body(await post({ aksi: "pratinjau", projectId: "PRJ-101" }));
+  const generated = await post({ aksi: "generate", projectId: "PRJ-101", konfirmasi: true, sidikSumber: preview.sidikSumber });
+  assert.equal(generated.status, 201);
+  assert.equal(r.jsonBindings.length, 1);
+  assert.equal(r.jsonBindings[0].type, 3802);
+  assert.equal(typeof r.jsonBindings[0].value, "object", "the driver's typed JSON value must receive the snapshot itself, not JSON.stringify(snapshot)");
+  const [stored] = await queryRows<{ kind: string; snapshot: SnapshotLaporan; pdf: Uint8Array }>(r.raw,
+    "SELECT jsonb_typeof(snapshot) AS kind,snapshot,pdf FROM th_final_reports WHERE project_id='PRJ-101'");
+  assert.equal(stored.kind, "object");
+  assert.deepEqual(stored.snapshot, r.rendered[0]);
+  assert.deepEqual(Buffer.from(stored.pdf), PDF_BYTES);
+  assert.equal((await queryRows<{ n: number }>(r.raw, "SELECT count(*)::int AS n FROM th_audit_logs WHERE aksi='buat_laporan_final'"))[0].n, 1);
+});
+
+test("the former pre-stringified postgres-js JSONB binding reproduces 23514 locally and rolls back without a report or audit", async t => {
+  const r = await rig(); t.after(() => r.raw.close());
+  await seedProject(r);
+  await assert.rejects(r.db.begin("isolation level repeatable read", async tx => {
+    await tx.unsafe(`INSERT INTO th_final_reports
+      (project_id,versi,dibuat_pada,dibuat_oleh,nama_penyusun,sidik_sumber,snapshot,pdf)
+      VALUES ('PRJ-101',1,now(),$1::uuid,'Sintetis',$2,$3::jsonb,$4::bytea)`,
+      [USER_ID, "a".repeat(64), JSON.stringify({ synthetic: true }), PDF_BYTES]);
+    return new Response(null, { status: 201 });
+  }), (error: unknown) => {
+    const e = error as { code?: string; constraint?: string; constraint_name?: string };
+    assert.equal(e.code, "23514");
+    assert.equal(e.constraint_name ?? e.constraint, "th_final_reports_snapshot_check");
+    return true;
+  });
+  assert.equal((await queryRows<{ n: number }>(r.raw, "SELECT count(*)::int AS n FROM th_final_reports"))[0].n, 0);
+  assert.equal((await queryRows<{ n: number }>(r.raw, "SELECT count(*)::int AS n FROM th_audit_logs WHERE aksi='buat_laporan_final'"))[0].n, 0);
+});
+
+test("audit failure rolls back the newly inserted JSON/PDF snapshot and returns only safe correlated diagnostics", async t => {
+  const failure = { failAudit: true };
+  const r = await rig(failure); t.after(() => r.raw.close());
+  const log = t.mock.method(console, "error", () => {});
+  await seedProject(r);
+  const correlationId = "zz5fx-1792381087406-58fcc57b1ee0";
+  const post = (payload: unknown) => r.laporan.POST(req("/api/laporan-final", { method: "POST",
+    headers: { "x-vercel-id": correlationId }, body: JSON.stringify(payload) }));
+  const preview = await body(await post({ aksi: "pratinjau", projectId: "PRJ-101" }));
+  const response = await post({ aksi: "generate", projectId: "PRJ-101", konfirmasi: true, sidikSumber: preview.sidikSumber });
+  assert.equal(response.status, 503);
+  const result = await body(response);
+  assert.equal(result.correlationId, correlationId);
+  assert.match(result.pesan, /Buka ulang pratinjau/);
+  assert.doesNotMatch(result.pesan, /migrasi/i);
+  assert.equal(r.rendered.length, 1, "PDF was rendered before transaction rollback");
+  assert.equal(r.jsonBindings.length, 1, "snapshot insertion was attempted before audit failure");
+  assert.equal((await queryRows<{ n: number }>(r.raw, "SELECT count(*)::int AS n FROM th_final_reports"))[0].n, 0);
+  assert.equal((await queryRows<{ n: number }>(r.raw, "SELECT count(*)::int AS n FROM th_audit_logs WHERE aksi='buat_laporan_final'"))[0].n, 0);
+  const metadata = log.mock.calls[0].arguments[1];
+  assert.equal(metadata.code, "23502");
+  assert.equal(metadata.table, "th_audit_logs");
+  assert.equal(metadata.correlationId, correlationId);
+  assert.deepEqual(Object.keys(metadata).sort(), ["code", "constraint", "correlationId", "table"]);
+  assert.doesNotMatch(JSON.stringify(log.mock.calls[0].arguments), /Proyek UAT sintetis|Aplikasi Sintetis|Ekspektasi|synthetic-final-report-pdf|INSERT INTO/);
+  failure.failAudit = false;
+  const freshPreview = await body(await post({ aksi: "pratinjau", projectId: "PRJ-101" }));
+  assert.equal(freshPreview.versiBerikutnya, 1, "rollback must not consume a report version");
+  const retry = await post({ aksi: "generate", projectId: "PRJ-101", konfirmasi: true, sidikSumber: freshPreview.sidikSumber });
+  assert.equal(retry.status, 201);
+  assert.equal((await body(retry)).versi, 1);
+  assert.equal((await queryRows<{ n: number }>(r.raw, "SELECT count(*)::int AS n FROM th_final_reports"))[0].n, 1);
+  assert.equal((await queryRows<{ n: number }>(r.raw, "SELECT count(*)::int AS n FROM th_audit_logs WHERE aksi='buat_laporan_final'"))[0].n, 1);
 });
