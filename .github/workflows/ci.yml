@@ -26,6 +26,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Install PDF test utilities
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - name: Test
         run: npm test
       - name: Typecheck

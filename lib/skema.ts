@@ -2,6 +2,7 @@ export const TABEL_WAJIB = [
   "th_users", "th_projects", "th_project_members", "th_modules", "th_scenarios",
   "th_evidence", "th_audit_logs", "th_password_resets", "th_evidence_uploads",
   "th_login_rate_limits", "th_project_test_accounts",
+  "th_final_reports",
 ];
 
 export const KOLOM_WAJIB: Record<string, string[]> = {
@@ -16,6 +17,7 @@ export const KOLOM_WAJIB: Record<string, string[]> = {
   th_evidence_uploads: ["id", "user_id", "project_id", "scenario_id", "idempotency_key", "staging_path", "final_path", "nama_asli", "tipe", "ukuran", "status", "evidence_id", "expires_at", "staging_cleaned_at"],
   th_login_rate_limits: ["email_hash", "attempts", "window_started_at", "blocked_until", "updated_at"],
   th_project_test_accounts: ["id", "project_id", "nama_akun", "format_version", "nonce", "ciphertext", "auth_tag", "diubah_oleh", "dibuat_pada", "diubah_pada"],
+  th_final_reports: ["id", "project_id", "versi", "dibuat_pada", "dibuat_oleh", "nama_penyusun", "sidik_sumber", "snapshot", "pdf"],
 };
 
 export const INDEKS_WAJIB = [
@@ -27,6 +29,7 @@ export const INDEKS_WAJIB = [
   "th_evidence_uploads_status_expiry_idx", "th_login_rate_limits_updated_idx",
   "th_project_test_accounts_pkey", "th_project_test_accounts_diubah_idx",
   "th_project_test_accounts_project_idx",
+  "th_final_reports_project_version_key",
 ];
 
 export type SkemaAktual = {

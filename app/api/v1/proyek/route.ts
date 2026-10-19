@@ -324,6 +324,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ pesan: "Aksi tidak dikenal." }, { status: 400 });
   } catch (e) {
+    if (isi.aksi === "hapus" && ["23503", "23001"].includes((e as { code?: string }).code ?? "")) {
+      return NextResponse.json({ pesan: "Proyek memiliki riwayat yang dilindungi, termasuk laporan final immutable, sehingga tidak dapat dihapus." }, { status: 409 });
+    }
     console.error("[proyek]", isi.aksi, e instanceof Error ? e.message : e);
     return NextResponse.json({ pesan: "Gagal menyimpan proyek." }, { status: 500 });
   }
