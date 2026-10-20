@@ -37,7 +37,7 @@ export function Button({
       {...props}
       type={type}
       disabled={disabled || busy}
-      aria-busy={busy || undefined}
+      aria-busy={busy || props["aria-busy"] || undefined}
       className={cn(
         "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-[13.5px] font-semibold transition-colors focus-visible:outline-hidden focus-visible:ring-4 disabled:cursor-not-allowed disabled:opacity-55",
         buttonVariant[variant],

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useFocusTrap } from "@/components/use-focus-trap";
 import { Button, Feedback, Field, Input, Select, Textarea } from "@/components/ui";
+import { SaveButton } from "@/components/save-button";
 import { labelJenisPengujian } from "@/lib/fase-proyek";
 import { useMetadataProyek, type MetadataProyek } from "@/components/metadata-proyek-state";
 
@@ -243,9 +244,9 @@ export function EditorMetadataProyek({
                 <p className="text-[12px] text-tinta-3">{kotor ? "Ada perubahan yang belum disimpan." : "Belum ada perubahan."}</p>
                 <div className="flex justify-end gap-2">
                   <Button onClick={tutup} disabled={sibuk}>Batal</Button>
-                  <Button type="submit" variant="primary" busy={sibuk} disabled={!kotor}>
-                    {sibuk ? "Menyimpan…" : "Simpan perubahan"}
-                  </Button>
+                  <SaveButton type="submit" variant="primary" busy={sibuk} disabled={!kotor} loadingText="Menyimpan…">
+                    Simpan perubahan
+                  </SaveButton>
                 </div>
               </footer>
             </form>

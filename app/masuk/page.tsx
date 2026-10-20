@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { Spinner } from "@/components/indikator-proses";
+import { SaveButton } from "@/components/save-button";
 
 function FormMasuk() {
   const [email, setEmail] = useState("");
@@ -71,10 +72,10 @@ function FormMasuk() {
               </p>
             )}
 
-            <button type="submit" disabled={sibuk} aria-busy={sibuk}
-              className="sentuh inline-flex w-full items-center justify-center gap-2 rounded-md bg-aksi text-[15px] font-medium text-white disabled:cursor-wait disabled:opacity-60">
-              {sibuk && <Spinner className="h-4 w-4" />}{sibuk ? "Memeriksa…" : "Masuk"}
-            </button>
+            <SaveButton type="submit" variant="primary" busy={sibuk} loadingText="Memeriksa…"
+              className="sentuh w-full rounded-md text-[15px] font-medium">
+              Masuk
+            </SaveButton>
           </form>
         </div>
         <p className="mt-4 text-center text-[13.5px] leading-relaxed text-tinta-3">

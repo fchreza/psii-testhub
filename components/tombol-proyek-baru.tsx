@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useFocusTrap } from "@/components/use-focus-trap";
 import { Button, Feedback, Field, Input, Select } from "@/components/ui";
+import { SaveButton } from "@/components/save-button";
 
 /** Form proyek baru: hanya metadata yang dibutuhkan untuk memulai pengujian. */
 export function TombolProyekBaru({ pic }: { pic: { id: string; nama: string }[] }) {
@@ -112,9 +113,9 @@ export function TombolProyekBaru({ pic }: { pic: { id: string; nama: string }[] 
 
           <footer className="flex justify-end gap-2 border-t border-garis bg-kartu/95 px-5 py-4 backdrop-blur-sm sm:px-7">
             <Button onClick={tutup} disabled={sibuk}>Batal</Button>
-            <Button type="submit" variant="primary" busy={sibuk}>
-              {sibuk ? "Menyimpan…" : "Simpan proyek"}
-            </Button>
+            <SaveButton type="submit" variant="primary" busy={sibuk} loadingText="Menyimpan…">
+              Simpan proyek
+            </SaveButton>
           </footer>
         </form>
       </aside>
