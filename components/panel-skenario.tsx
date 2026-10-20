@@ -8,6 +8,7 @@ import { BuktiSkenario } from "./bukti-skenario";
 import type { Skenario } from "./tabel-skenario";
 import { Spinner } from "@/components/indikator-proses";
 import { Button, Feedback, Select, Textarea } from "@/components/ui";
+import { SaveButton } from "@/components/save-button";
 
 type Riwayat = {
   id: string; aksi: string; kolom: string | null;
@@ -498,10 +499,11 @@ export function PanelSkenario({
                 <Button type="button" onClick={batalkanSemua} disabled={!adaDrafKotor || simpanSibuk} className="text-[13px]">
                   Batalkan
                 </Button>
-                <Button type="button" variant="primary" onClick={() => void simpanSemua()}
-                  disabled={!adaDrafKotor || (isDraft && !draf.judul.trim())} busy={simpanSibuk} className="text-[13px]">
-                  {simpanSibuk ? (isDraft ? "Membuat skenario…" : "Menyimpan semua…") : (isDraft ? "Buat skenario" : "Simpan semua perubahan")}
-                </Button>
+                <SaveButton type="button" variant="primary" onClick={() => void simpanSemua()}
+                  disabled={!adaDrafKotor || (isDraft && !draf.judul.trim())} busy={simpanSibuk}
+                  loadingText={isDraft ? "Membuat skenario…" : "Menyimpan semua…"} className="text-[13px]">
+                  {isDraft ? "Buat skenario" : "Simpan semua perubahan"}
+                </SaveButton>
               </div>
             </div>
           )}

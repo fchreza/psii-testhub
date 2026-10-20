@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { Button, Feedback, Field, Input } from "@/components/ui";
+import { SaveButton } from "@/components/save-button";
 import type { Modul, Skenario } from "@/components/tabel-skenario";
 
 export function LembarSkenario({
@@ -136,14 +137,16 @@ export function LembarSkenario({
 
       {formBuka && bolehKelola && (
         <form id="form-lembar-baru" onSubmit={(e) => void buat(e)} className="grid gap-3 bg-kartu px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end sm:px-5">
-          <Field id={idNama} label="Nama kelompok / modul / menu" required
-            hint="Lembar ini akan tersedia untuk skenario pada tahap proyek yang sedang dipilih.">
+          <Field id={idNama} label="Nama kelompok / modul / menu" required>
             <Input id={idNama} aria-describedby={`${idNama}-hint`} autoFocus maxLength={200} value={nama} disabled={disabled || sibuk}
               placeholder="Contoh: Penyaluran TKD" onChange={(e) => setNama(e.target.value)} />
           </Field>
-          <Button type="submit" variant="primary" busy={sibuk} disabled={disabled || !nama.trim()} className="w-full sm:w-auto">
-            {sibuk ? "Membuat lembar…" : "Buat lembar"}
-          </Button>
+          <SaveButton type="submit" variant="primary" busy={sibuk} loadingText="Membuat lembar…" disabled={disabled || !nama.trim()} className="w-full sm:w-auto">
+            Buat lembar
+          </SaveButton>
+          <p id={`${idNama}-hint`} className="text-[12px] leading-relaxed text-tinta-3 sm:col-span-2">
+            Lembar ini akan tersedia untuk skenario pada tahap proyek yang sedang dipilih.
+          </p>
           {galat && <Feedback kind="error" className="sm:col-span-2">{galat}</Feedback>}
         </form>
       )}
